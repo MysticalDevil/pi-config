@@ -74,7 +74,7 @@ function getPiCommand(): { cmd: string; args: string[] } {
 export async function guardianReview(
   command: string,
   cwd: string,
-  timeoutMs: number = 10000,
+  timeoutMs: number = 15000,
 ): Promise<GuardianResult> {
   // Quick pre-check: if execpolicy already forbids it, skip LLM call
   const policy = loadPolicy(cwd);
