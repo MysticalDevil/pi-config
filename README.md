@@ -70,8 +70,18 @@ cp -r ~/.pi.bak/agent/sessions/  ~/.pi/agent/   # chat history (optional)
 
 Then in pi: `/reload`
 
-> `auth.json` is excluded from git. `sessions/` and `themes/` `skills/` are
-> also excluded — they are auto-discovered or user-specific.
+## Git excludes
+
+These are intentionally not tracked:
+
+| Path | Reason |
+|------|--------|
+| `agent/auth.json` | API keys — secrets |
+| `agent/sessions/` | Full chat history — privacy |
+| `agent/themes/` | Third-party / auto-discovered |
+| `agent/skills/` | Third-party / auto-discovered |
+| `agent/npm/`, `agent/git/` | Installed packages — reinstall with `pi install` |
+| `node_modules/` | Dependencies |
 
 ## Lint
 
