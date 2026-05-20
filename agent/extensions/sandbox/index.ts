@@ -36,6 +36,9 @@ import {
   createBashTool,
   getAgentDir,
 } from "@earendil-works/pi-coding-agent";
+import { evaluateCommand, loadPolicy, type LoadedPolicy } from "./execpolicy.js";
+import { guardianReview } from "./guardian.js";
+import { setupSnapshots } from "./shell-snapshot.js";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -101,26 +104,6 @@ const DEFAULT_CONFIG: SandboxConfig = {
   restrictNetwork: false,
   extraBwrapArgs: [],
 };
-
-// ── Dangerous patterns for auto-review mode ─────────────────────────────────
-
-const DANGEROUS_PATTERNS: Array<{ pattern: RegExp; label: string }> = [
-  { pattern: /\brm\s+(-r[f]?\s|--recursive)/i, label: "recursive delete" },
-  { pattern: /\bsudo\b/i, label: "sudo" },
-  { pattern: /\bchmod\s+.*777/i, label: "world-writable chmod" },
-  { pattern: /\bchown\b/i, label: "chown" },
-  { pattern: /\bdd\s+if=/i, label: "dd (disk copy)" },
-  { pattern: /\bmkfs\b/i, label: "mkfs" },
-  { pattern: /\b>\/dev\/sd[a-z]/i, label: "raw device write" },
-  { pattern: /\bcurl.*\|\s*(ba)?sh\b/i, label: "curl pipe shell" },
-  { pattern: /\bwget.*\|\s*(ba)?sh\b/i, label: "wget pipe shell" },
-  { pattern: /\bgit\s+push\s+.*--force/i, label: "git push --force" },
-  { pattern: /\bdocker\s+(rm|rmi|prune)/i, label: "docker cleanup" },
-  { pattern: /\bshutdown\b/i, label: "shutdown" },
-  { pattern: /\breboot\b/i, label: "reboot" },
-  { pattern: /\bfork\s*bomb/i, label: "fork bomb" },
-  { pattern: /:\(\)\s*\{\s*:\s*\|:&\s*\}/, label: "fork bomb pattern" },
-];
 
 // ── Config loading ──────────────────────────────────────────────────────────
 
@@ -346,18 +329,6 @@ function createSandboxedBashOps(config: SandboxConfig): BashOperations {
   };
 }
 
-// ── Check if a command matches dangerous patterns ──────────────────────────
-
-function checkDangerous(command: string): string[] {
-  const matches: string[] = [];
-  for (const { pattern, label } of DANGEROUS_PATTERNS) {
-    if (pattern.test(command)) {
-      matches.push(label);
-    }
-  }
-  return matches;
-}
-
 // ── Check if a path matches write-protection patterns ──────────────────────
 
 function isWriteProtected(filepath: string, patterns: string[]): boolean {
@@ -456,6 +427,10 @@ export default function (pi: ExtensionAPI) {
     return;
   });
 
+  // ── Load execpolicy ──────────────────────────────────────────────────
+
+  let currentPolicy: LoadedPolicy = { rules: [], bannedPrefixes: [], sources: [] };
+
   // ── tool_call interception: auto-review mode ──────────────────────────
 
   pi.on("tool_call", async (event, ctx) => {
@@ -463,14 +438,56 @@ export default function (pi: ExtensionAPI) {
 
     const command = event.input.command as string;
 
-    // auto-review: flag dangerous commands
+    // auto-review: execpolicy + guardian evaluation
     if (currentMode === "auto-review") {
-      const dangerous = checkDangerous(command);
-      if (dangerous.length > 0) {
+      const { evaluation, bannedBy } = evaluateCommand(command, currentPolicy);
+
+      // Banned prefixes: block immediately (model trying to bypass sandbox)
+      if (bannedBy) {
         ctx.ui.notify(
-          `⚠️ Auto-review: ${dangerous.join(", ")} detected in:\n  ${command.slice(0, 100)}`,
+          `🚫 Auto-review: banned prefix "${bannedBy.join(" ")}" blocked:\n  ${command.slice(0, 100)}`,
+          "error",
+        );
+        return { block: true, reason: `Banned command prefix: ${bannedBy.join(" ")}` };
+      }
+
+      // Execpolicy decision
+      if (evaluation.decision === "forbidden") {
+        const rule = evaluation.matchedRules[0];
+        ctx.ui.notify(
+          `🚫 Auto-review: forbidden by policy (${rule.justification}):\n  ${command.slice(0, 100)}`,
+          "error",
+        );
+        return { block: true, reason: `Forbidden by policy: ${rule.justification}` };
+      }
+
+      if (evaluation.decision === "prompt") {
+        // Launch guardian LLM review in background, but allow immediately
+        // (non-blocking: the notification arrives after review completes)
+        guardianReview(command, ctx.cwd).then((result) => {
+          const icon = result.decision === "deny" ? "🚫" : result.decision === "prompt" ? "⚠️" : "✅";
+          ctx.ui.notify(
+            `${icon} Guardian: ${result.decision} — ${result.reason}\n  ${command.slice(0, 100)}`,
+            result.decision === "deny" ? "error" : result.decision === "prompt" ? "warning" : "info",
+          );
+        }).catch(() => {});
+
+        ctx.ui.notify(
+          `⚠️ Auto-review: ${evaluation.matchedRules[0]?.justification ?? "requires review"}:\n  ${command.slice(0, 100)}`,
           "warning",
         );
+      }
+
+      if (evaluation.decision === "allow" || evaluation.decision === null) {
+        // Even for allow, do a lightweight guardian check in background
+        guardianReview(command, ctx.cwd).then((result) => {
+          if (result.decision !== "allow") {
+            ctx.ui.notify(
+              `⚠️ Guardian flagged: ${result.reason}\n  ${command.slice(0, 80)}`,
+              "warning",
+            );
+          }
+        }).catch(() => {});
       }
     }
 
@@ -518,6 +535,9 @@ export default function (pi: ExtensionAPI) {
 
     // Load config
     sandboxConfig = loadConfig(ctx.cwd);
+
+    // Load execpolicy rules (project-specific)
+    currentPolicy = loadPolicy(ctx.cwd);
 
     // Restore mode from session entries
     let restoredMode: PermissionMode | undefined;
@@ -574,6 +594,10 @@ export default function (pi: ExtensionAPI) {
       // best effort
     }
   });
+
+  // ── Setup shell snapshots ────────────────────────────────────────────
+
+  setupSnapshots(pi);
 
   // ── /permissions command ───────────────────────────────────────────────
 
@@ -645,6 +669,10 @@ export default function (pi: ExtensionAPI) {
         ...config.writeProtected.map((p) => `  • ${p}`),
         "",
         `Network:        ${config.restrictNetwork ? "🔒 restricted" : "✅ shared with host"}`,
+        "",
+        "ExecPolicy:",
+        `  Rules: ${currentPolicy.rules.length} (from ${currentPolicy.sources.join(", ")})`,
+        `  Banned prefixes: ${currentPolicy.bannedPrefixes.length}`,
       ];
 
       ctx.ui.notify(lines.join("\n"), "info");

@@ -1,0 +1,86 @@
+{
+  "rules": [
+    {
+      "pattern": ["rm", ["-rf", "-r", "--recursive"]],
+      "decision": "prompt",
+      "justification": "Recursive delete — check before proceeding"
+    },
+    {
+      "pattern": ["sudo"],
+      "decision": "prompt",
+      "justification": "Privilege escalation via sudo"
+    },
+    {
+      "pattern": ["chmod", "*", "777"],
+      "decision": "prompt",
+      "justification": "World-writable permissions"
+    },
+    {
+      "pattern": ["chown"],
+      "decision": "prompt",
+      "justification": "Ownership changes require review"
+    },
+    {
+      "pattern": ["git", "push", ["-f", "--force"]],
+      "decision": "prompt",
+      "justification": "Force push rewrites remote history"
+    },
+    {
+      "pattern": ["git", "push", "--force"],
+      "decision": "prompt",
+      "justification": "Force push rewrites remote history"
+    },
+    {
+      "pattern": ["shutdown"],
+      "decision": "forbidden",
+      "justification": "System shutdown — use manually with sudo"
+    },
+    {
+      "pattern": ["reboot"],
+      "decision": "forbidden",
+      "justification": "System reboot — use manually with sudo"
+    },
+    {
+      "pattern": ["dd", "if="],
+      "decision": "forbidden",
+      "justification": "Raw disk copy is destructive"
+    },
+    {
+      "pattern": ["mkfs"],
+      "decision": "forbidden",
+      "justification": "Filesystem creation is destructive"
+    },
+    {
+      "pattern": [":(){ :|:& };:"],
+      "decision": "forbidden",
+      "justification": "Fork bomb pattern"
+    },
+    {
+      "pattern": ["curl", "*", "|", "*", "sh"],
+      "decision": "forbidden",
+      "justification": "Piping curl to shell — use package manager instead"
+    },
+    {
+      "pattern": ["wget", "*", "|", "*", "sh"],
+      "decision": "forbidden",
+      "justification": "Piping wget to shell — use package manager instead"
+    },
+    {
+      "pattern": [">", "/dev", "sd", "*"],
+      "decision": "forbidden",
+      "justification": "Writing directly to block device"
+    }
+  ],
+  "banned_prefixes": [
+    ["python3"],
+    ["python3", "-c"],
+    ["python"],
+    ["python", "-c"],
+    ["bash"],
+    ["bash", "-c"],
+    ["sh"],
+    ["sh", "-c"],
+    ["zsh"],
+    ["zsh", "-c"]
+  ]
+}
