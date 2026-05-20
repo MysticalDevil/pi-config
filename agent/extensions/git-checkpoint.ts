@@ -11,8 +11,12 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 const cwd = process.cwd();
 
 function isGitRepo(): boolean {
-  try { execSync("git rev-parse --git-dir", { cwd, stdio: "ignore" }); return true; }
-  catch { return false; }
+  try {
+    execSync("git rev-parse --git-dir", { cwd, stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function git(pi, args) {
@@ -22,10 +26,13 @@ async function git(pi, args) {
 
 async function getPiStashes(pi) {
   const { stdout } = await git(pi, ["stash", "list", "--format=%gd %gs"]);
-  return stdout.split("\n").filter(l => l.includes("pi:")).map(l => l.split(" ")[0]);
+  return stdout
+    .split("\n")
+    .filter((l) => l.includes("pi:"))
+    .map((l) => l.split(" ")[0]);
 }
 
-export default function(pi) {
+export default function (pi) {
   pi.on("session_start", async (_event, ctx) => {
     if (isGitRepo())
       ctx.ui.setStatus("checkpoint", ctx.ui.theme.fg("dim", "💾 /checkpoint available"));
@@ -34,11 +41,17 @@ export default function(pi) {
   pi.registerCommand("checkpoint", {
     description: "Create a named git stash checkpoint",
     handler: async (args, ctx) => {
-      if (!isGitRepo()) { ctx.ui.notify("Not a git repository", "error"); return; }
-      const name = (args || "").trim() || ("manual-"+Date.now());
+      if (!isGitRepo()) {
+        ctx.ui.notify("Not a git repository", "error");
+        return;
+      }
+      const name = (args || "").trim() || "manual-" + Date.now();
       const { stdout } = await git(pi, ["status", "--porcelain"]);
-      if (!stdout) { ctx.ui.notify("Nothing to checkpoint", "info"); return; }
-      const { code } = await git(pi, ["stash", "push", "-m", "pi:"+name, "--include-untracked"]);
+      if (!stdout) {
+        ctx.ui.notify("Nothing to checkpoint", "info");
+        return;
+      }
+      const { code } = await git(pi, ["stash", "push", "-m", "pi:" + name, "--include-untracked"]);
       if (code === 0) ctx.ui.notify("Checkpoint: " + name, "info");
       else ctx.ui.notify("Checkpoint failed", "error");
     },
@@ -47,9 +60,15 @@ export default function(pi) {
   pi.registerCommand("rollback", {
     description: "Revert to the latest pi checkpoint stash",
     handler: async (_args, ctx) => {
-      if (!isGitRepo()) { ctx.ui.notify("Not a git repository", "error"); return; }
+      if (!isGitRepo()) {
+        ctx.ui.notify("Not a git repository", "error");
+        return;
+      }
       const stashes = await getPiStashes(pi);
-      if (stashes.length === 0) { ctx.ui.notify("No checkpoints", "info"); return; }
+      if (stashes.length === 0) {
+        ctx.ui.notify("No checkpoints", "info");
+        return;
+      }
       const ref = stashes[0];
       const ok = await ctx.ui.confirm("Rollback", "Revert to " + ref + "?");
       if (!ok) return;

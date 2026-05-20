@@ -18,8 +18,6 @@
  */
 
 import { execSync } from "node:child_process";
-import { existsSync } from "node:fs";
-import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 // ── Types ─────────────────────────────────────────────────────────────
@@ -100,7 +98,10 @@ function getUntrackedFiles(cwd: string): string[] {
     return execSync("git ls-files --others --exclude-standard -- .", {
       cwd,
       encoding: "utf-8",
-    }).trim().split("\n").filter(Boolean);
+    })
+      .trim()
+      .split("\n")
+      .filter(Boolean);
   } catch (e) {
     if (e instanceof Error && !e.message.includes("not a git repository")) {
       console.error("turn-diff: git ls-files failed:", e.message);
@@ -111,7 +112,7 @@ function getUntrackedFiles(cwd: string): string[] {
 
 function parseStatLine(line: string): DiffFile | null {
   // Format: " path/to/file.rs | 5 ++--"
-  const match = line.match(/^\s+(.+?)\s+\|\s+(\d+)\s+([+\-]+)$/);
+  const match = line.match(/^\s+(.+?)\s+\|\s+(\d+)\s+([+-]+)$/);
   if (!match) return null;
 
   const filepath = match[1].trim();
@@ -134,7 +135,10 @@ function parseStatLine(line: string): DiffFile | null {
 
 function parseDiffStat(stat: string): DiffFile[] {
   if (!stat) return [];
-  return stat.split("\n").map(parseStatLine).filter((f): f is DiffFile => f !== null);
+  return stat
+    .split("\n")
+    .map(parseStatLine)
+    .filter((f): f is DiffFile => f !== null);
 }
 
 // ── Tracker state ─────────────────────────────────────────────────────
@@ -201,9 +205,7 @@ function formatTurnDiffContext(diff: TurnDiff): string {
   for (const f of diff.files) {
     const icon = f.status === "added" ? "+" : f.status === "deleted" ? "-" : "~";
     const counts =
-      f.additions > 0 || f.deletions > 0
-        ? ` (+${f.additions} -${f.deletions})`
-        : " (new file)";
+      f.additions > 0 || f.deletions > 0 ? ` (+${f.additions} -${f.deletions})` : " (new file)";
     lines.push(`  ${icon} ${f.path}${counts}`);
   }
 
@@ -272,15 +274,10 @@ export function setupTurnDiff(pi: ExtensionAPI) {
     const ctxText = formatTurnDiffContext(lastTurnDiff);
 
     // Clear after injecting (don't repeat the same diff)
-    const injected = lastTurnDiff;
     lastTurnDiff = null;
 
     return {
-      systemPrompt:
-        event.systemPrompt +
-        "\n\n<turn_diff>\n" +
-        ctxText +
-        "\n</turn_diff>",
+      systemPrompt: event.systemPrompt + "\n\n<turn_diff>\n" + ctxText + "\n</turn_diff>",
     };
   });
 }

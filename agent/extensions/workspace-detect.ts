@@ -24,7 +24,12 @@ function existingFiles(dir: string, files: string[]): string[] {
 }
 
 function readJson(dir: string, file: string): Record<string, unknown> | null {
-  try { return JSON.parse(readFileSync(join(dir, file), "utf-8")); } catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return null; throw e; }
+  try {
+    return JSON.parse(readFileSync(join(dir, file), "utf-8"));
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw e;
+  }
 }
 
 function detectNode(dir: string): ProjectInfo | null {
@@ -35,8 +40,9 @@ function detectNode(dir: string): ProjectInfo | null {
   let packageManager = "npm";
   if (existsSync(join(dir, "pnpm-lock.yaml"))) packageManager = "pnpm";
   else if (existsSync(join(dir, "yarn.lock"))) packageManager = "yarn";
-  else if (existsSync(join(dir, "bun.lockb")) || existsSync(join(dir, "bun.lock"))) packageManager = "bun";
-  const engines = (pkg.engines as Record<string, string> | undefined);
+  else if (existsSync(join(dir, "bun.lockb")) || existsSync(join(dir, "bun.lock")))
+    packageManager = "bun";
+  const engines = pkg.engines as Record<string, string> | undefined;
   const runtime = engines?.node ? `Node ${engines.node}` : "Node";
   const devDeps = (pkg.devDependencies ?? {}) as Record<string, string>;
   const deps = (pkg.dependencies ?? {}) as Record<string, string>;
@@ -46,19 +52,44 @@ function detectNode(dir: string): ProjectInfo | null {
   else if (allDeps.jest || existsSync(join(dir, "jest.config.ts"))) testRunner = "jest";
   let linter: string | undefined;
   let formatter: string | undefined;
-  if (existsSync(join(dir, "biome.json"))) { linter = "biome"; formatter = "biome"; }
-  else {
-    if (existsSync(join(dir, "eslint.config.mjs")) || existsSync(join(dir, "eslint.config.js"))) linter = "eslint";
+  if (existsSync(join(dir, "biome.json"))) {
+    linter = "biome";
+    formatter = "biome";
+  } else {
+    if (existsSync(join(dir, "eslint.config.mjs")) || existsSync(join(dir, "eslint.config.js")))
+      linter = "eslint";
     if (allDeps.prettier || existsSync(join(dir, ".prettierrc"))) formatter = "prettier";
   }
-  return { language, runtime, packageManager, testRunner, linter, formatter, keyFiles: existingFiles(dir, ["package.json", "tsconfig.json"]) };
+  return {
+    language,
+    runtime,
+    packageManager,
+    testRunner,
+    linter,
+    formatter,
+    keyFiles: existingFiles(dir, ["package.json", "tsconfig.json"]),
+  };
 }
 
 function detectRust(dir: string): ProjectInfo | null {
   if (!existsSync(join(dir, "Cargo.toml"))) return null;
   let edition: string | undefined;
-  try { const raw = readFileSync(join(dir, "Cargo.toml"), "utf-8"); const m = raw.match(/edition\s*=\s*"(\d+)"/); if (m) edition = m[1]; } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; }
-  return { language: "Rust", runtime: edition ? `Rust ${edition} edition` : "Rust", packageManager: "cargo", testRunner: "cargo test", linter: "clippy", formatter: "rustfmt", keyFiles: existingFiles(dir, ["Cargo.toml", "Cargo.lock"]) };
+  try {
+    const raw = readFileSync(join(dir, "Cargo.toml"), "utf-8");
+    const m = raw.match(/edition\s*=\s*"(\d+)"/);
+    if (m) edition = m[1];
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+  }
+  return {
+    language: "Rust",
+    runtime: edition ? `Rust ${edition} edition` : "Rust",
+    packageManager: "cargo",
+    testRunner: "cargo test",
+    linter: "clippy",
+    formatter: "rustfmt",
+    keyFiles: existingFiles(dir, ["Cargo.toml", "Cargo.lock"]),
+  };
 }
 
 function detectPython(dir: string): ProjectInfo | null {
@@ -69,20 +100,44 @@ function detectPython(dir: string): ProjectInfo | null {
   if (existsSync(join(dir, "poetry.lock"))) packageManager = "poetry";
   else if (existsSync(join(dir, "uv.lock"))) packageManager = "uv";
   let testRunner: string | undefined;
-  if (existsSync(join(dir, "conftest.py")) || existsSync(join(dir, "pytest.ini"))) testRunner = "pytest";
+  if (existsSync(join(dir, "conftest.py")) || existsSync(join(dir, "pytest.ini")))
+    testRunner = "pytest";
   let linter: string | undefined;
-  if (hasPyproject) { try { const raw = readFileSync(join(dir, "pyproject.toml"), "utf-8"); if (raw.includes("[tool.ruff]")) linter = "ruff"; } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; } }
-  return { language: "Python", packageManager, testRunner, linter, keyFiles: existingFiles(dir, ["pyproject.toml", "requirements.txt"]) };
+  if (hasPyproject) {
+    try {
+      const raw = readFileSync(join(dir, "pyproject.toml"), "utf-8");
+      if (raw.includes("[tool.ruff]")) linter = "ruff";
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+    }
+  }
+  return {
+    language: "Python",
+    packageManager,
+    testRunner,
+    linter,
+    keyFiles: existingFiles(dir, ["pyproject.toml", "requirements.txt"]),
+  };
 }
 
 function detectGo(dir: string): ProjectInfo | null {
   if (!existsSync(join(dir, "go.mod"))) return null;
-  return { language: "Go", packageManager: "go modules", testRunner: "go test", keyFiles: existingFiles(dir, ["go.mod"]) };
+  return {
+    language: "Go",
+    packageManager: "go modules",
+    testRunner: "go test",
+    keyFiles: existingFiles(dir, ["go.mod"]),
+  };
 }
 
 function detectZig(dir: string): ProjectInfo | null {
   if (!existsSync(join(dir, "build.zig")) && !existsSync(join(dir, "build.zig.zon"))) return null;
-  return { language: "Zig", packageManager: "zig build", testRunner: "zig build test", keyFiles: existingFiles(dir, ["build.zig", "build.zig.zon"]) };
+  return {
+    language: "Zig",
+    packageManager: "zig build",
+    testRunner: "zig build test",
+    keyFiles: existingFiles(dir, ["build.zig", "build.zig.zon"]),
+  };
 }
 
 function detectBuild(dir: string): string | undefined {
@@ -98,12 +153,17 @@ function detectCI(dir: string): string | undefined {
 
 function detectContainer(dir: string): string | undefined {
   if (existsSync(join(dir, "Dockerfile"))) return "Docker";
-  if (existsSync(join(dir, "docker-compose.yml")) || existsSync(join(dir, "docker-compose.yaml"))) return "Docker Compose";
+  if (existsSync(join(dir, "docker-compose.yml")) || existsSync(join(dir, "docker-compose.yaml")))
+    return "Docker Compose";
   return undefined;
 }
 
 function detectAll(dir: string): ProjectInfo {
-  const result = detectNode(dir) ?? detectRust(dir) ?? detectPython(dir) ?? detectGo(dir) ?? detectZig(dir) ?? { language: "unknown", keyFiles: [] };
+  const result = detectNode(dir) ??
+    detectRust(dir) ??
+    detectPython(dir) ??
+    detectGo(dir) ??
+    detectZig(dir) ?? { language: "unknown", keyFiles: [] };
   result.buildSystem = detectBuild(dir);
   result.ci = detectCI(dir);
   result.container = detectContainer(dir);
@@ -137,15 +197,22 @@ export default function (pi: ExtensionAPI) {
     const info = detectAll(ctx.cwd);
     workspaceContext = formatContext(info);
     if (workspaceContext) {
-      ctx.ui.setStatus("workspace", ctx.ui.theme.fg("dim",
-        info.language !== "unknown"
-          ? "📁 " + info.language + (info.packageManager ? " (" + info.packageManager + ")" : "")
-          : "📁 generic project"));
+      ctx.ui.setStatus(
+        "workspace",
+        ctx.ui.theme.fg(
+          "dim",
+          info.language !== "unknown"
+            ? "📁 " + info.language + (info.packageManager ? " (" + info.packageManager + ")" : "")
+            : "📁 generic project",
+        ),
+      );
     }
   });
 
   pi.on("before_agent_start", async (event, _ctx) => {
     if (!workspaceContext) return;
-    return { systemPrompt: event.systemPrompt + "\n\n<workspace>\n" + workspaceContext + "\n</workspace>" };
+    return {
+      systemPrompt: event.systemPrompt + "\n\n<workspace>\n" + workspaceContext + "\n</workspace>",
+    };
   });
 }

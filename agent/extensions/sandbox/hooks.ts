@@ -72,9 +72,15 @@ class HookRegistry {
 
   unregister(name: string): boolean {
     const preIdx = this.preHooks.findIndex((h) => h.name === name);
-    if (preIdx >= 0) { this.preHooks.splice(preIdx, 1); return true; }
+    if (preIdx >= 0) {
+      this.preHooks.splice(preIdx, 1);
+      return true;
+    }
     const postIdx = this.postHooks.findIndex((h) => h.name === name);
-    if (postIdx >= 0) { this.postHooks.splice(postIdx, 1); return true; }
+    if (postIdx >= 0) {
+      this.postHooks.splice(postIdx, 1);
+      return true;
+    }
     return false;
   }
 
@@ -88,10 +94,16 @@ class HookRegistry {
 
   private setEnabled(name: string, enabled: boolean): boolean {
     for (const h of this.preHooks) {
-      if (h.name === name) { h._enabled = enabled; return true; }
+      if (h.name === name) {
+        h._enabled = enabled;
+        return true;
+      }
     }
     for (const h of this.postHooks) {
-      if (h.name === name) { h._enabled = enabled; return true; }
+      if (h.name === name) {
+        h._enabled = enabled;
+        return true;
+      }
     }
     return false;
   }
@@ -128,7 +140,11 @@ class HookRegistry {
         const result = await hook.handler(toolName, currentParams);
 
         if (result.action === "block") {
-          return { blocked: true, reason: result.reason ?? `Blocked by hook: ${hook.name}`, params: currentParams };
+          return {
+            blocked: true,
+            reason: result.reason ?? `Blocked by hook: ${hook.name}`,
+            params: currentParams,
+          };
         }
 
         if (result.action === "modify" && result.modifiedParams) {
@@ -185,10 +201,11 @@ export function setupHooks(pi: ExtensionAPI) {
   // Pre-tool-use: run pre hooks, optionally block or modify params
   pi.on("tool_call", async (event, _ctx) => {
     const params = event.input as Record<string, unknown>;
-    const { blocked, reason, params: modifiedParams } = await hooks.runPreToolUse(
-      event.toolName,
-      params,
-    );
+    const {
+      blocked,
+      reason,
+      params: modifiedParams,
+    } = await hooks.runPreToolUse(event.toolName, params);
 
     if (blocked) {
       return { block: true, reason: reason ?? "Blocked by hook" };
@@ -206,7 +223,11 @@ export function setupHooks(pi: ExtensionAPI) {
   let pendingContexts: string[] = [];
 
   pi.on("tool_result", async (event, _ctx) => {
-    const contexts = await hooks.runPostToolUse(event.toolName, event.input as Record<string, unknown>, event);
+    const contexts = await hooks.runPostToolUse(
+      event.toolName,
+      event.input as Record<string, unknown>,
+      event,
+    );
     pendingContexts.push(...contexts);
   });
 
@@ -234,16 +255,20 @@ export const networkSafetyHook: PreToolUseHook = {
   async handler(toolName, params) {
     const cmd = (params.command as string) ?? "";
     const suspiciousPatterns = [
-      /curl\s+.*\s+-[dD].*@/i,     // curl posting data
-      /wget\s+.*--post-data/i,     // wget posting data
-      /nc\s+-[lL]/i,               // netcat listening
-      /socat\s+/i,                  // socat
-      /ngrok\s+/i,                  // ngrok tunnels
-      /ssh\s+-[LR]\s+/i,           // ssh tunneling
+      /curl\s+.*\s+-[dD].*@/i, // curl posting data
+      /wget\s+.*--post-data/i, // wget posting data
+      /nc\s+-[lL]/i, // netcat listening
+      /socat\s+/i, // socat
+      /ngrok\s+/i, // ngrok tunnels
+      /ssh\s+-[LR]\s+/i, // ssh tunneling
     ];
     for (const p of suspiciousPatterns) {
       if (p.test(cmd)) {
-        return { action: "modify", modifiedParams: params, reason: "Network safety hook triggered" };
+        return {
+          action: "modify",
+          modifiedParams: params,
+          reason: "Network safety hook triggered",
+        };
       }
     }
     return { action: "allow" };
@@ -261,10 +286,15 @@ export const configProtectionHook: PreToolUseHook = {
   async handler(toolName, params) {
     const filepath = (params.path as string) ?? "";
     const protectedFiles = [
-      ".env", ".env.local", ".env.production",
-      "credentials.json", "service-account.json",
-      "id_rsa", "id_ed25519",
-      ".npmrc", ".pypirc",
+      ".env",
+      ".env.local",
+      ".env.production",
+      "credentials.json",
+      "service-account.json",
+      "id_rsa",
+      "id_ed25519",
+      ".npmrc",
+      ".pypirc",
     ];
     const basename = filepath.split("/").pop() ?? "";
     if (protectedFiles.includes(basename)) {
@@ -285,7 +315,7 @@ export const auditLogHook: PostToolUseHook = {
   description: "Log all bash command results for audit trail",
   priority: 200,
   match: (toolName) => toolName === "bash",
-  async handler(toolName, params, result) {
+  async handler(toolName, params, _result) {
     const cmd = (params.command as string) ?? "";
     const preview = cmd.slice(0, 80);
     // Logging only — no context injection

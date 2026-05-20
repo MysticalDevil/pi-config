@@ -205,14 +205,6 @@ export function setupSnapshots(pi: ExtensionAPI) {
     if (event.toolName !== "bash") return;
 
     try {
-      // Try to detect cwd changes from bash output
-      const content = Array.isArray(event.content)
-        ? event.content.map((c) => (c.type === "text" ? c.text : "")).join("")
-        : "";
-
-      // Simple heuristic: look for cd or pushd/popd patterns
-      // This is best-effort; we can't actually know the shell's cwd
-      // without a more sophisticated mechanism
       captureSnapshot();
     } catch (e) {
       if (e instanceof Error && !e.message?.includes("aborted")) {

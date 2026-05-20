@@ -30,7 +30,7 @@
  */
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join } from "node:path";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 
 // ── Types ─────────────────────────────────────────────────────────────
@@ -84,19 +84,34 @@ function tokenize(command: string): string[] {
       continue;
     }
     if (inSingle) {
-      if (ch === "'") { inSingle = false; continue; }
+      if (ch === "'") {
+        inSingle = false;
+        continue;
+      }
       current += ch;
       continue;
     }
     if (inDouble) {
-      if (ch === '"') { inDouble = false; continue; }
+      if (ch === '"') {
+        inDouble = false;
+        continue;
+      }
       current += ch;
       continue;
     }
-    if (ch === "'") { inSingle = true; continue; }
-    if (ch === '"') { inDouble = true; continue; }
+    if (ch === "'") {
+      inSingle = true;
+      continue;
+    }
+    if (ch === '"') {
+      inDouble = true;
+      continue;
+    }
     if (ch === " " || ch === "\t") {
-      if (current) { tokens.push(current); current = ""; }
+      if (current) {
+        tokens.push(current);
+        current = "";
+      }
       continue;
     }
     current += ch;
@@ -139,9 +154,12 @@ function matchRule(tokens: string[], rule: RuleDef): { matched: boolean; prefix:
 
 function decisionSeverity(d: Decision): number {
   switch (d) {
-    case "forbidden": return 3;
-    case "prompt": return 2;
-    case "allow": return 1;
+    case "forbidden":
+      return 3;
+    case "prompt":
+      return 2;
+    case "allow":
+      return 1;
   }
 }
 
@@ -170,7 +188,7 @@ export function evaluateTokens(tokens: string[], rules: RuleDef[]): Evaluation {
 
   // Strictest decision across all matches
   const strictest = matched.reduce((a, b) =>
-    decisionSeverity(a.decision) >= decisionSeverity(b.decision) ? a : b
+    decisionSeverity(a.decision) >= decisionSeverity(b.decision) ? a : b,
   );
 
   return {
@@ -182,16 +200,16 @@ export function evaluateTokens(tokens: string[], rules: RuleDef[]): Evaluation {
 /**
  * Check if command tokens match any banned prefix.
  */
-export function matchesBannedPrefix(
-  tokens: string[],
-  bannedPrefixes: string[][],
-): string[] | null {
+export function matchesBannedPrefix(tokens: string[], bannedPrefixes: string[][]): string[] | null {
   for (const bp of bannedPrefixes) {
     if (bp.length === 0) continue;
     if (tokens.length < bp.length) continue;
     let match = true;
     for (let i = 0; i < bp.length; i++) {
-      if (tokens[i] !== bp[i]) { match = false; break; }
+      if (tokens[i] !== bp[i]) {
+        match = false;
+        break;
+      }
     }
     if (match) return bp;
   }
@@ -329,7 +347,11 @@ export function loadPolicy(cwd: string): LoadedPolicy {
         }
       }
     } catch (e) {
-      // .pi/rules/ directory doesn't exist or can't be read
+      if (
+        (e as NodeJS.ErrnoException).code !== "ENOENT" &&
+        (e as NodeJS.ErrnoException).code !== "EACCES"
+      )
+        throw e;
     }
   }
 

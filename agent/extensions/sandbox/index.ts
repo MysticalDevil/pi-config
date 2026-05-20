@@ -31,26 +31,22 @@ import { existsSync, readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { homedir } from "node:os";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import {
-  type BashOperations,
-  createBashTool,
-  getAgentDir,
-} from "@earendil-works/pi-coding-agent";
+import { type BashOperations, createBashTool, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { evaluateCommand, loadPolicy, type LoadedPolicy } from "./execpolicy.js";
 import { guardianReview } from "./guardian.js";
 import { setupSnapshots } from "./shell-snapshot.js";
-import { setupHooks, hooks, networkSafetyHook, configProtectionHook, auditLogHook } from "./hooks.js";
+import {
+  setupHooks,
+  hooks,
+  networkSafetyHook,
+  configProtectionHook,
+  auditLogHook,
+} from "./hooks.js";
 import { setupTurnDiff } from "./turn-diff.js";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
 type PermissionMode = "sandbox" | "auto-review" | "full-access";
-
-const MODE_LABELS: Record<PermissionMode, string> = {
-  sandbox: "Sandbox — bwrap isolation for bash commands",
-  "auto-review": "Auto Review — flag dangerous commands, allow everything",
-  "full-access": "Full Access — no restrictions",
-};
 
 const MODE_EMOJI: Record<PermissionMode, string> = {
   sandbox: "🔒",
@@ -156,7 +152,7 @@ function deepMerge<T extends Record<string, unknown>>(base: T, overrides: Partia
         (result as Record<string, unknown>)[key] = ov;
       } else if (typeof ov === "object" && ov !== null && !Array.isArray(ov)) {
         (result as Record<string, unknown>)[key] = deepMerge(
-          (base as Record<string, unknown>)[key] as Record<string, unknown> ?? {},
+          ((base as Record<string, unknown>)[key] as Record<string, unknown>) ?? {},
           ov as Record<string, unknown>,
         );
       } else {
@@ -176,7 +172,7 @@ function checkBwrap(): boolean {
   try {
     execSync("bwrap --version", { stdio: "ignore" });
     bwrapAvailable = true;
-  } catch (e) {
+  } catch {
     bwrapAvailable = false;
   }
   return bwrapAvailable;
@@ -196,11 +192,17 @@ function checkBwrap(): boolean {
  */
 function buildBwrapArgs(command: string, cwd: string, config: SandboxConfig): string[] {
   const args: string[] = [
-    "--ro-bind", "/", "/",
-    "--dev", "/dev",
-    "--proc", "/proc",
-    "--tmpfs", "/tmp",
-    "--chdir", cwd,
+    "--ro-bind",
+    "/",
+    "/",
+    "--dev",
+    "/dev",
+    "--proc",
+    "/proc",
+    "--tmpfs",
+    "/tmp",
+    "--chdir",
+    cwd,
     "--die-with-parent",
   ];
 
@@ -254,9 +256,7 @@ function buildBwrapArgs(command: string, cwd: string, config: SandboxConfig): st
 function ensureEmptyDir(path: string) {
   try {
     execSync(`rm -rf "${path}" && mkdir -p "${path}"`, { stdio: "ignore" });
-  } catch (e) {
-    // non-critical: empty dir for bwrap mount hiding
-  }
+  } catch {}
 }
 
 // ── Bash operations: sandboxed ──────────────────────────────────────────────
@@ -288,7 +288,10 @@ function createSandboxedBashOps(config: SandboxConfig): BashOperations {
               try {
                 process.kill(-child.pid, "SIGKILL");
               } catch (e) {
-                console.error("sandbox: failed to kill process group, falling back to direct kill:", e);
+                console.error(
+                  "sandbox: failed to kill process group, falling back to direct kill:",
+                  e,
+                );
                 child.kill("SIGKILL");
               }
             }
@@ -350,7 +353,6 @@ function isWriteProtected(filepath: string, patterns: string[]): boolean {
   return false;
 }
 
-
 // ── Secret scanner for git diff ─────────────────────────────────────────
 
 interface DiffFinding {
@@ -368,22 +370,50 @@ function scanGitDiff(diff: string): DiffFinding[] {
 
   const patterns: Array<{ pattern: RegExp; type: string }> = [
     { pattern: /([a-zA-Z0-9_]+)\s*=\s*["']?(sk-[a-zA-Z0-9]{20,})["']?/g, type: "API key" },
-    { pattern: /([a-zA-Z0-9_]+)\s*=\s*["']?(AIza[a-zA-Z0-9_-]{30,})["']?/g, type: "Google API key" },
+    {
+      pattern: /([a-zA-Z0-9_]+)\s*=\s*["']?(AIza[a-zA-Z0-9_-]{30,})["']?/g,
+      type: "Google API key",
+    },
     { pattern: /([a-zA-Z0-9_]+)\s*=\s*["']?(ghp_[a-zA-Z0-9]{30,})["']?/g, type: "GitHub token" },
-    { pattern: /([a-zA-Z0-9_]+)\s*=\s*["']?(github_pat_[a-zA-Z0-9_]{30,})["']?/g, type: "GitHub token" },
-    { pattern: /([a-zA-Z0-9_]+)\s*=\s*["']?(xox[bprs]-[a-zA-Z0-9-]{30,})["']?/g, type: "Slack token" },
+    {
+      pattern: /([a-zA-Z0-9_]+)\s*=\s*["']?(github_pat_[a-zA-Z0-9_]{30,})["']?/g,
+      type: "GitHub token",
+    },
+    {
+      pattern: /([a-zA-Z0-9_]+)\s*=\s*["']?(xox[bprs]-[a-zA-Z0-9-]{30,})["']?/g,
+      type: "Slack token",
+    },
     { pattern: /([a-zA-Z0-9_]+)\s*=\s*["']?(AKIA[a-zA-Z0-9]{16})["']?/g, type: "AWS key" },
     { pattern: /(-----BEGIN (?:RSA|OPENSSH|EC|DSA) PRIVATE KEY-----)/g, type: "Private key" },
-    { pattern: /([a-zA-Z0-9_]+)\s*[:=]\s*["']?(mongodb(?:\+srv)?:\/\/[^:]+:[^@]+@)/g, type: "DB connection" },
-    { pattern: /([a-zA-Z0-9_]+)\s*[:=]\s*["']?(postgres(?:ql)?:\/\/[^:]+:[^@]+@)/g, type: "DB connection" },
-    { pattern: /([a-zA-Z0-9_]+)\s*[:=]\s*["']?(redis(?:s)?:\/\/[^:]+:[^@]+@)/g, type: "Redis connection" },
+    {
+      pattern: /([a-zA-Z0-9_]+)\s*[:=]\s*["']?(mongodb(?:\+srv)?:\/\/[^:]+:[^@]+@)/g,
+      type: "DB connection",
+    },
+    {
+      pattern: /([a-zA-Z0-9_]+)\s*[:=]\s*["']?(postgres(?:ql)?:\/\/[^:]+:[^@]+@)/g,
+      type: "DB connection",
+    },
+    {
+      pattern: /([a-zA-Z0-9_]+)\s*[:=]\s*["']?(redis(?:s)?:\/\/[^:]+:[^@]+@)/g,
+      type: "Redis connection",
+    },
     { pattern: /([a-zA-Z0-9_]+)\s*=\s*["']?(https?:\/\/[^:]+:[^@]+@)/g, type: "URL credentials" },
-    { pattern: /(?:password|passwd|secret|token|api[_-]?key)\s*[:=]\s*["']([^"'\s]{8,})["']?/gi, type: "Credential" },
+    {
+      pattern: /(?:password|passwd|secret|token|api[_-]?key)\s*[:=]\s*["']([^"'\s]{8,})["']?/gi,
+      type: "Credential",
+    },
   ];
 
   for (const line of lines) {
-    if (line.startsWith("--- ") || line.startsWith("+++ ")) { currentFile = line.slice(6).trim(); continue; }
-    if (line.startsWith("@@")) { const m = line.match(/^@@ -(\d+)/); currentLine = m ? parseInt(m[1], 10) : currentLine; continue; }
+    if (line.startsWith("--- ") || line.startsWith("+++ ")) {
+      currentFile = line.slice(6).trim();
+      continue;
+    }
+    if (line.startsWith("@@")) {
+      const m = line.match(/^@@ -(\d+)/);
+      currentLine = m ? parseInt(m[1], 10) : currentLine;
+      continue;
+    }
     if (!line.startsWith("+") || line.startsWith("+++")) continue;
     currentLine++;
     const added = line.slice(1);
@@ -392,7 +422,8 @@ function scanGitDiff(diff: string): DiffFinding[] {
       let match: RegExpExecArray | null;
       while ((match = pattern.exec(added)) !== null) {
         const captured = match[1] || match[0];
-        const masked = captured.length > 25 ? captured.slice(0, 12) + "..." + captured.slice(-5) : "***";
+        const masked =
+          captured.length > 25 ? captured.slice(0, 12) + "..." + captured.slice(-5) : "***";
         findings.push({ file: currentFile, line: currentLine, type, masked });
       }
     }
@@ -408,7 +439,7 @@ export default function (pi: ExtensionAPI) {
   let currentMode: PermissionMode = "sandbox";
   let sandboxConfig: SandboxConfig = DEFAULT_CONFIG;
   let sandboxActive = false; // true when sandbox mode is actually enforcing
-  let turnApproved = false;   // true when user said "allow all this turn"
+  let turnApproved = false; // true when user said "allow all this turn"
   const localCwd = process.cwd();
   const localBash = createBashTool(localCwd);
 
@@ -422,9 +453,17 @@ export default function (pi: ExtensionAPI) {
 
   // ── Apply permission mode ─────────────────────────────────────────────
 
-  function applyMode(mode: PermissionMode, source: string, ctx?: {
-    ui?: { setStatus: (id: string, text: string | undefined) => void; notify: (text: string, level: string) => void; theme: { fg: (color: string, text: string) => string } };
-  }) {
+  function applyMode(
+    mode: PermissionMode,
+    source: string,
+    ctx?: {
+      ui?: {
+        setStatus: (id: string, text: string | undefined) => void;
+        notify: (text: string, level: string) => void;
+        theme: { fg: (color: string, text: string) => string };
+      };
+    },
+  ) {
     currentMode = mode;
     sandboxActive = mode === "sandbox" && bwrapAvailable && sandboxConfig.enabled;
 
@@ -480,16 +519,33 @@ export default function (pi: ExtensionAPI) {
     // Secret detection on git commit
     if (/\bgit\s+commit\b/.test(command) && !/\bgit\s+commit\s*--dry-run\b/.test(command)) {
       try {
-        const diff = execSync("git diff --cached --unified=0", { cwd: event.cwd, encoding: "utf-8", maxBuffer: 2 * 1024 * 1024 });
+        const diff = execSync("git diff --cached --unified=0", {
+          cwd: event.cwd,
+          encoding: "utf-8",
+          maxBuffer: 2 * 1024 * 1024,
+        });
         if (diff.trim()) {
           const findings = scanGitDiff(diff);
           if (findings.length > 0 && !process.env.ALLOW_SECRETS) {
-            const report = findings.map((f) => `  ${f.file}:${f.line}  ${f.type}: ${f.masked}`).join("\n");
-            return { result: { output: `⚠️ Secret-detection blocked. ${findings.length} potential secret(s):\n${report}\n\nRemove secrets or set ALLOW_SECRETS=1 to bypass.`, exitCode: 1, cancelled: false, truncated: false } };
+            const report = findings
+              .map((f) => `  ${f.file}:${f.line}  ${f.type}: ${f.masked}`)
+              .join("\n");
+            return {
+              result: {
+                output: `⚠️ Secret-detection blocked. ${findings.length} potential secret(s):\n${report}\n\nRemove secrets or set ALLOW_SECRETS=1 to bypass.`,
+                exitCode: 1,
+                cancelled: false,
+                truncated: false,
+              },
+            };
           }
         }
       } catch (e) {
-        if (e instanceof Error && !e.message.includes("not a git repository") && !e.message.includes("did not match any files")) {
+        if (
+          e instanceof Error &&
+          !e.message.includes("not a git repository") &&
+          !e.message.includes("did not match any files")
+        ) {
           ctx.ui.notify(`Secret-detection scan failed: ${e.message}`, "warning");
         }
       }
@@ -521,15 +577,24 @@ export default function (pi: ExtensionAPI) {
     // ── Secret detection: scan staged diff on git commit (all modes) ──
     if (/\bgit\s+commit\b/.test(command) && !/\bgit\s+commit\s*--dry-run\b/.test(command)) {
       try {
-        const diff = execSync("git diff --cached --unified=0", { cwd: ctx.cwd, encoding: "utf-8", maxBuffer: 2 * 1024 * 1024 });
+        const diff = execSync("git diff --cached --unified=0", {
+          cwd: ctx.cwd,
+          encoding: "utf-8",
+          maxBuffer: 2 * 1024 * 1024,
+        });
         if (diff.trim()) {
           const findings = scanGitDiff(diff);
           if (findings.length > 0 && !process.env.ALLOW_SECRETS) {
-            const report = findings.map((f) => `  ${f.file}:${f.line}  ${f.type}: ${f.masked}`).join("\n");
-            return { block: true, reason: `Secret-detection: ${findings.length} potential secret(s) in staged changes:\n${report}\n\nRemove secrets or set ALLOW_SECRETS=1 to bypass.` };
+            const report = findings
+              .map((f) => `  ${f.file}:${f.line}  ${f.type}: ${f.masked}`)
+              .join("\n");
+            return {
+              block: true,
+              reason: `Secret-detection: ${findings.length} potential secret(s) in staged changes:\n${report}\n\nRemove secrets or set ALLOW_SECRETS=1 to bypass.`,
+            };
           }
         }
-      } catch (e) { /* not a git repo or no staged changes */ }
+      } catch {}
     }
 
     // auto-review: execpolicy + guardian evaluation
@@ -560,43 +625,45 @@ export default function (pi: ExtensionAPI) {
         if (turnApproved) {
           ctx.ui.notify(`✅ Auto-approved: ${command.slice(0, 80)}`, "info");
         } else {
-        const justification = evaluation.matchedRules[0]?.justification ?? "requires review";
-        const preview = command.length > 80 ? command.slice(0, 80) + "..." : command;
+          const justification = evaluation.matchedRules[0]?.justification ?? "requires review";
+          const preview = command.length > 80 ? command.slice(0, 80) + "..." : command;
 
-        // First do a quick guardian evaluation
-        let guardianAdvice = "";
-        try {
-          const gr = await guardianReview(command, ctx.cwd, 8000);
-          guardianAdvice = `\nGuardian assessment: ${gr.decision} — ${gr.reason}`;
-        } catch (e) {
-          ctx.ui.notify(`Guardian review unavailable: ${e instanceof Error ? e.message : e}`, "warning");
-        }
+          // First do a quick guardian evaluation
+          let guardianAdvice = "";
+          try {
+            const gr = await guardianReview(command, ctx.cwd, 8000);
+            guardianAdvice = `\nGuardian assessment: ${gr.decision} — ${gr.reason}`;
+          } catch (e) {
+            ctx.ui.notify(
+              `Guardian review unavailable: ${e instanceof Error ? e.message : e}`,
+              "warning",
+            );
+          }
 
-        const choice = await ctx.ui.select(
-          `⚠️  ${justification}\n\n  $ ${preview}${guardianAdvice}`,
-          ["Allow once", "Deny", "Allow all this turn"],
-        );
+          const choice = await ctx.ui.select(
+            `⚠️  ${justification}\n\n  $ ${preview}${guardianAdvice}`,
+            ["Allow once", "Deny", "Allow all this turn"],
+          );
 
-        if (!choice || choice === "Deny") {
-          return { block: true, reason: `Denied by user: ${justification}` };
-        }
+          if (!choice || choice === "Deny") {
+            return { block: true, reason: `Denied by user: ${justification}` };
+          }
 
-        if (choice === "Allow all this turn") {
-          turnApproved = true;
-        }
+          if (choice === "Allow all this turn") {
+            turnApproved = true;
+          }
         } // end else (not turnApproved)
       }
 
       if (evaluation.decision === "allow" || evaluation.decision === null) {
         // Non-blocking background review for transparent commands
-        guardianReview(command, ctx.cwd).then((result) => {
-          if (result.decision !== "allow") {
-            ctx.ui.notify(
-              `⚠️ Guardian: ${result.reason}\n  ${command.slice(0, 80)}`,
-              "warning",
-            );
-          }
-        }).catch(() => {});
+        guardianReview(command, ctx.cwd)
+          .then((result) => {
+            if (result.decision !== "allow") {
+              ctx.ui.notify(`⚠️ Guardian: ${result.reason}\n  ${command.slice(0, 80)}`, "warning");
+            }
+          })
+          .catch(() => {});
       }
     }
 
@@ -614,10 +681,7 @@ export default function (pi: ExtensionAPI) {
     if (event.toolName === "write" || event.toolName === "edit") {
       const filepath = (event.input as { path?: string }).path ?? "";
       if (isWriteProtected(filepath, sandboxConfig.writeProtected)) {
-        ctx.ui.notify(
-          `🔒 Sandbox: write to protected path blocked: ${filepath}`,
-          "warning",
-        );
+        ctx.ui.notify(`🔒 Sandbox: write to protected path blocked: ${filepath}`, "warning");
         return { block: true, reason: `Sandbox: write to protected path "${filepath}" is blocked` };
       }
     }
@@ -627,10 +691,7 @@ export default function (pi: ExtensionAPI) {
       const resolved = resolve(filepath);
       for (const denied of sandboxConfig.deniedPaths) {
         if (resolved.startsWith(denied + "/") || resolved === denied) {
-          ctx.ui.notify(
-            `🔒 Sandbox: read of denied path blocked: ${filepath}`,
-            "warning",
-          );
+          ctx.ui.notify(`🔒 Sandbox: read of denied path blocked: ${filepath}`, "warning");
           return { block: true, reason: `Sandbox: read of "${filepath}" is blocked (denied path)` };
         }
       }
@@ -660,9 +721,7 @@ export default function (pi: ExtensionAPI) {
     }
 
     // Determine initial mode
-    const initialMode: PermissionMode = noSandbox
-      ? "full-access"
-      : restoredMode ?? "sandbox";
+    const initialMode: PermissionMode = noSandbox ? "full-access" : (restoredMode ?? "sandbox");
 
     // Check platform
     if (initialMode === "sandbox" && process.platform !== "linux") {
@@ -681,7 +740,11 @@ export default function (pi: ExtensionAPI) {
       ctx.ui.notify("Sandbox disabled in config. Using full-access.", "info");
       applyMode("full-access", "config-disabled", ctx);
     } else {
-      applyMode(initialMode, noSandbox ? "cli-flag" : restoredMode ? "session-restore" : "default", ctx);
+      applyMode(
+        initialMode,
+        noSandbox ? "cli-flag" : restoredMode ? "session-restore" : "default",
+        ctx,
+      );
     }
 
     // Show sandbox info in status
@@ -726,12 +789,6 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("permissions", {
     description: "Switch permission mode: sandbox (default), auto-review, or full-access",
     handler: async (_args, ctx) => {
-      const options = [
-        `${MODE_EMOJI.sandbox}  sandbox      ${MODE_LABELS.sandbox}`,
-        `${MODE_EMOJI["auto-review"]}  auto-review  ${MODE_LABELS["auto-review"]}`,
-        `${MODE_EMOJI["full-access"]}  full-access  ${MODE_LABELS["full-access"]}`,
-      ];
-
       const choice = await ctx.ui.select(
         `Select permission level (current: ${MODE_EMOJI[currentMode]} ${currentMode}):`,
         ["sandbox", "auto-review", "full-access"],
@@ -756,10 +813,7 @@ export default function (pi: ExtensionAPI) {
 
       // Check bwrap for sandbox mode
       if (newMode === "sandbox" && !checkBwrap()) {
-        ctx.ui.notify(
-          "bwrap not found. Install bubblewrap: sudo apt install bubblewrap",
-          "error",
-        );
+        ctx.ui.notify("bwrap not found. Install bubblewrap: sudo apt install bubblewrap", "error");
         return;
       }
 
@@ -797,7 +851,9 @@ export default function (pi: ExtensionAPI) {
         `  Banned prefixes: ${currentPolicy.bannedPrefixes.length}`,
         "",
         "Hooks:",
-        ...hooks.list().map((h) => `  ${h.enabled ? "✅" : "❌"} [${h.type}] ${h.name} (prio ${h.priority})`),
+        ...hooks
+          .list()
+          .map((h) => `  ${h.enabled ? "✅" : "❌"} [${h.type}] ${h.name} (prio ${h.priority})`),
       ];
 
       ctx.ui.notify(lines.join("\n"), "info");

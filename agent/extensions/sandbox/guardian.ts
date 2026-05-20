@@ -61,6 +61,14 @@ Respond with exactly:
 
 // ── Spawn guardian subprocess ─────────────────────────────────────────
 
+function parseJsonSafely(text: string): GuardianJsonResponse | null {
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+
 function getPiCommand(): { cmd: string; args: string[] } {
   // Same logic as subagent — use process.execPath if it looks like pi,
   // otherwise fall back to "pi".
@@ -90,13 +98,7 @@ export async function guardianReview(
 
   return new Promise((resolve) => {
     const pi = getPiCommand();
-    const proc = spawn(pi.cmd, [
-      ...pi.args,
-      "-p",
-      "--no-session",
-      "--no-extensions",
-      prompt,
-    ], {
+    const proc = spawn(pi.cmd, [...pi.args, "-p", "--no-session", "--no-extensions", prompt], {
       cwd,
       stdio: ["ignore", "pipe", "pipe"],
       timeout: timeoutMs,
@@ -110,7 +112,13 @@ export async function guardianReview(
     const finish = (result: GuardianResult) => {
       if (settled) return;
       settled = true;
-      try { proc.kill("SIGTERM"); } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ESRCH") { console.error("guardian: failed to kill subprocess:", e); } }
+      try {
+        proc.kill("SIGTERM");
+      } catch (e) {
+        if ((e as NodeJS.ErrnoException).code !== "ESRCH") {
+          console.error("guardian: failed to kill subprocess:", e);
+        }
+      }
       resolve(result);
     };
 
@@ -135,8 +143,8 @@ export async function guardianReview(
       // Find JSON object in the output (model might wrap in markdown)
       const jsonMatch = text.match(/\{[\s\S]*"decision"[\s\S]*\}/);
       if (jsonMatch) {
-        try {
-          const parsed: GuardianJsonResponse = JSON.parse(jsonMatch[0]);
+        const parsed = parseJsonSafely(jsonMatch[0]);
+        if (parsed) {
           const d = parsed.decision?.toLowerCase();
           if (d === "allow" || d === "deny" || d === "prompt") {
             finish({
@@ -145,17 +153,16 @@ export async function guardianReview(
             });
             return;
           }
-        } catch (e) {
-          // Failed to parse JSON from guardian output — assume safe
         }
       }
 
       // Failed to parse — assume safe
       finish({
         decision: "allow",
-        reason: code === 0
-          ? "Guardian returned non-JSON output — allowing"
-          : `Guardian exited ${code} — allowing`,
+        reason:
+          code === 0
+            ? "Guardian returned non-JSON output — allowing"
+            : `Guardian exited ${code} — allowing`,
       });
     });
 

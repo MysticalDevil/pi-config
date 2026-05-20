@@ -1,7 +1,7 @@
 {
   "name": "pi-extension-sandbox",
-  "private": true,
   "version": "2.0.0",
+  "private": true,
   "type": "module",
   "scripts": {
     "clean": "echo 'nothing to clean'",
@@ -9,6 +9,8 @@
     "check": "echo 'nothing to check'"
   },
   "pi": {
-    "extensions": ["./index.ts"]
+    "extensions": [
+      "./index.ts"
+    ]
   }
 }

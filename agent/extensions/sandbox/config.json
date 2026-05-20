@@ -11,20 +11,8 @@
     "~/.pi",
     "/var/tmp"
   ],
-  "deniedPaths": [
-    "~/.ssh",
-    "~/.aws",
-    "~/.gnupg",
-    "~/.gemini",
-    "~/.anthropic"
-  ],
-  "writeProtected": [
-    ".env",
-    ".env.*",
-    "*.pem",
-    "*.key",
-    "*.secret"
-  ],
+  "deniedPaths": ["~/.ssh", "~/.aws", "~/.gnupg", "~/.gemini", "~/.anthropic"],
+  "writeProtected": [".env", ".env.*", "*.pem", "*.key", "*.secret"],
   "restrictNetwork": false,
   "extraBwrapArgs": []
 }

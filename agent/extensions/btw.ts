@@ -19,76 +19,70 @@
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export default function (pi: ExtensionAPI) {
-	pi.registerCommand("btw", {
-		description:
-			"Append extra context/instructions mid-conversation (usage: /btw [--follow|--silent|--system] <message>)",
-		handler: async (args, ctx) => {
-			let text = args.trim();
+  pi.registerCommand("btw", {
+    description:
+      "Append extra context/instructions mid-conversation (usage: /btw [--follow|--silent|--system] <message>)",
+    handler: async (args, ctx) => {
+      let text = args.trim();
 
-			if (!text) {
-				ctx.ui.notify("Usage: /btw [--follow|--silent|--system] <message>", "error");
-				return;
-			}
+      if (!text) {
+        ctx.ui.notify("Usage: /btw [--follow|--silent|--system] <message>", "error");
+        return;
+      }
 
-			// Parse flags
-			let mode: "steer" | "followUp" = "steer";
-			let silent = false;
-			let systemOnly = false;
+      // Parse flags
+      let mode: "steer" | "followUp" = "steer";
+      let silent = false;
+      let systemOnly = false;
 
-			const tokens = text.split(/\s+/);
-			const flags: string[] = [];
-			while (tokens[0]?.startsWith("--")) {
-				flags.push(tokens.shift()!);
-			}
-			text = tokens.join(" ");
+      const tokens = text.split(/\s+/);
+      const flags: string[] = [];
+      while (tokens[0]?.startsWith("--")) {
+        flags.push(tokens.shift()!);
+      }
+      text = tokens.join(" ");
 
-			if (!text) {
-				ctx.ui.notify("Message required after flags", "error");
-				return;
-			}
+      if (!text) {
+        ctx.ui.notify("Message required after flags", "error");
+        return;
+      }
 
-			if (flags.includes("--follow")) mode = "followUp";
-			if (flags.includes("--silent")) silent = true;
-			if (flags.includes("--system")) systemOnly = true;
+      if (flags.includes("--follow")) mode = "followUp";
+      if (flags.includes("--silent")) silent = true;
+      if (flags.includes("--system")) systemOnly = true;
 
-			// Check if agent is currently running
-			const isStreaming = !ctx.isIdle() || ctx.hasPendingMessages();
+      // Check if agent is currently running
+      const isStreaming = !ctx.isIdle() || ctx.hasPendingMessages();
 
-			if (systemOnly) {
-				// Inject as a one-time system prompt append for next turn
-				pi.sendMessage(
-					{
-						customType: "btw-system-hint",
-						content: `[BTW] ${text}`,
-						display: !silent,
-					},
-					{ deliverAs: mode, triggerTurn: !isStreaming },
-				);
-				ctx.ui.notify(`BTW (system): ${text.slice(0, 60)}${text.length > 60 ? "..." : ""}`, "info");
-				return;
-			}
+      if (systemOnly) {
+        // Inject as a one-time system prompt append for next turn
+        pi.sendMessage(
+          {
+            customType: "btw-system-hint",
+            content: `[BTW] ${text}`,
+            display: !silent,
+          },
+          { deliverAs: mode, triggerTurn: !isStreaming },
+        );
+        ctx.ui.notify(`BTW (system): ${text.slice(0, 60)}${text.length > 60 ? "..." : ""}`, "info");
+        return;
+      }
 
-			// Send as user message (appears as if user typed it)
-			if (!isStreaming) {
-				// Agent idle: send directly with a btw prefix
-				pi.sendUserMessage(
-					[
-						{ type: "text", text: `💡 BTW: ${text}` },
-					],
-				);
-			} else {
-				// Agent streaming: queue with specified delivery mode
-				pi.sendUserMessage(
-					[
-						{ type: "text", text: `💡 BTW: ${text}` },
-					],
-					{ deliverAs: mode },
-				);
-			}
+      // Send as user message (appears as if user typed it)
+      if (!isStreaming) {
+        // Agent idle: send directly with a btw prefix
+        pi.sendUserMessage([{ type: "text", text: `💡 BTW: ${text}` }]);
+      } else {
+        // Agent streaming: queue with specified delivery mode
+        pi.sendUserMessage([{ type: "text", text: `💡 BTW: ${text}` }], { deliverAs: mode });
+      }
 
-			const modeLabel = mode === "steer" ? "立即" : "本轮后";
-			const display = silent ? " (silent)" : "";
-			ctx.ui.notify(`BTW${display} [${modeLabel}]: ${text.slice(0, 60)}${text.length > 60 ? "..." : ""}`, "info");
-		},
-	});
+      const modeLabel = mode === "steer" ? "立即" : "本轮后";
+      const display = silent ? " (silent)" : "";
+      ctx.ui.notify(
+        `BTW${display} [${modeLabel}]: ${text.slice(0, 60)}${text.length > 60 ? "..." : ""}`,
+        "info",
+      );
+    },
+  });
 }
