@@ -44,7 +44,6 @@ export default function (pi: ExtensionAPI) {
     startedAt: Date.now(),
   };
 
-  let _turnIndex = 0;
   let showWidget = false;
 
   function formatTokens(t: number): string {
@@ -86,7 +85,6 @@ export default function (pi: ExtensionAPI) {
 
   // Track turns
   pi.on("turn_start", async (event) => {
-    turnIndex = event.turnIndex;
     stats.turns.push({
       turnIndex: event.turnIndex,
       inputTokens: 0,
@@ -135,7 +133,6 @@ export default function (pi: ExtensionAPI) {
 
   // Restore state on session start
   pi.on("session_start", async (_event, ctx) => {
-    _turnIndex = 0;
     const entries = ctx.sessionManager.getEntries();
     for (const entry of entries) {
       if (entry.type === "custom" && entry.customType === "cost-data") {
