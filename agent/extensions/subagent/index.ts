@@ -415,14 +415,12 @@ async function runSingleAgent(
     if (wasAborted) throw new Error("Subagent was aborted");
     return currentResult;
   } finally {
-    if (tmpPromptPath)
-      try {
-        fs.unlinkSync(tmpPromptPath);
-      } catch {}
-    if (tmpPromptDir)
-      try {
-        fs.rmdirSync(tmpPromptDir);
-      } catch {}
+    if (tmpPromptPath) {
+      if (fs.existsSync(tmpPromptPath)) fs.unlinkSync(tmpPromptPath);
+    }
+    if (tmpPromptDir) {
+      if (fs.existsSync(tmpPromptDir)) fs.rmdirSync(tmpPromptDir);
+    }
   }
 }
 
