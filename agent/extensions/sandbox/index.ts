@@ -39,6 +39,8 @@ import {
 import { evaluateCommand, loadPolicy, type LoadedPolicy } from "./execpolicy.js";
 import { guardianReview } from "./guardian.js";
 import { setupSnapshots } from "./shell-snapshot.js";
+import { setupHooks, hooks, networkSafetyHook, configProtectionHook, auditLogHook } from "./hooks.js";
+import { setupTurnDiff } from "./turn-diff.js";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -599,6 +601,17 @@ export default function (pi: ExtensionAPI) {
 
   setupSnapshots(pi);
 
+  // ── Setup hooks system ───────────────────────────────────────────────
+
+  setupHooks(pi);
+  hooks.register(networkSafetyHook);
+  hooks.register(configProtectionHook);
+  hooks.register(auditLogHook);
+
+  // ── Setup turn diff tracking ─────────────────────────────────────────
+
+  setupTurnDiff(pi);
+
   // ── /permissions command ───────────────────────────────────────────────
 
   pi.registerCommand("permissions", {
@@ -673,6 +686,9 @@ export default function (pi: ExtensionAPI) {
         "ExecPolicy:",
         `  Rules: ${currentPolicy.rules.length} (from ${currentPolicy.sources.join(", ")})`,
         `  Banned prefixes: ${currentPolicy.bannedPrefixes.length}`,
+        "",
+        "Hooks:",
+        ...hooks.list().map((h) => `  ${h.enabled ? "✅" : "❌"} [${h.type}] ${h.name} (prio ${h.priority})`),
       ];
 
       ctx.ui.notify(lines.join("\n"), "info");
