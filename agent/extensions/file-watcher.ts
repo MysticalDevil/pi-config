@@ -20,6 +20,7 @@ function makeBaseline(cwd: string): Map<string, string> {
       if (!line) continue;
       const filepath = line.slice(3).trim();
       if (!filepath) continue;
+      if (filepath.startsWith("agent/sessions/")) continue;
       const hash = execSync(`git hash-object "${filepath}"`, { cwd, encoding: "utf-8" }).trim();
       map.set(filepath, hash);
     }
