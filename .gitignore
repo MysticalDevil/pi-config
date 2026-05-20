@@ -1,0 +1,21 @@
+# ── API keys & credentials (DO NOT COMMIT) ──
+auth.json
+
+# ── Session history (full conversations, file contents, command output) ──
+sessions/
+
+# ── Installed third-party packages (reinstall with `pi install`) ──
+npm/
+git/
+
+# ── Dependencies ──
+node_modules/
+
+# ── Themes (third-party / auto-discovered) ──
+themes/
+
+# ── Skills (third-party / auto-discovered) ──
+skills/
+
+# ── Logs ──
+*.log
