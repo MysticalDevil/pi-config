@@ -387,7 +387,7 @@ export default function (pi: ExtensionAPI) {
   // Shortcut
   pi.registerShortcut(Key.ctrlAlt("r"), {
     description: "Review code changes",
-    handler: async (ctx) => {
+    handler: async (_ctx) => {
       // Trigger review command
       pi.sendUserMessage("/review", { triggerTurn: false } as any);
     },

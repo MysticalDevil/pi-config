@@ -71,15 +71,6 @@ function shouldIgnore(filePath: string): boolean {
   return false;
 }
 
-function globToRegex(pattern: string): RegExp {
-  const escaped = pattern
-    .replace(/[.+^${}()|[\]\\]/g, "\\$&")
-    .replace(/\*\*/g, "___DOUBLESTAR___")
-    .replace(/\*/g, "[^/]*")
-    .replace(/___DOUBLESTAR___/g, ".*");
-  return new RegExp(`^${escaped}$`);
-}
-
 function collectFiles(
   cwd: string,
   targetPath: string,

@@ -6,7 +6,6 @@
  */
 
 import { execSync } from "node:child_process";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const cwd = process.cwd();
 

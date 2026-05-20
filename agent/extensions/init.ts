@@ -433,7 +433,9 @@ export default function (pi: ExtensionAPI) {
           "Cancel",
         ]);
         if (choice === "Cancel") return;
-        if (choice === "Preview only") preview as unknown as boolean; // just preview
+        if (choice === "Preview only") {
+          void (preview as unknown as boolean);
+        }
       }
 
       ctx.ui.notify("Scanning project...", "info");
