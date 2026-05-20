@@ -55,7 +55,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
         ctx.ui.theme.fg("accent", `📋 ${completed}/${todoItems.length}`),
       );
     } else if (planModeEnabled) {
-      ctx.ui.setStatus("plan-mode", ctx.ui.theme.fg("warning", "⏸ plan"));
+      ctx.ui.setStatus("plan-mode", ctx.ui.theme.fg("warning", "⏸ PLAN"));
     } else {
       ctx.ui.setStatus("plan-mode", undefined);
     }
