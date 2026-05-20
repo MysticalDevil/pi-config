@@ -356,6 +356,7 @@ export default function (pi: ExtensionAPI) {
   let currentMode: PermissionMode = "sandbox";
   let sandboxConfig: SandboxConfig = DEFAULT_CONFIG;
   let sandboxActive = false; // true when sandbox mode is actually enforcing
+  let turnApproved = false;   // true when user said "allow all this turn"
   const localCwd = process.cwd();
   const localBash = createBashTool(localCwd);
 
@@ -429,6 +430,12 @@ export default function (pi: ExtensionAPI) {
     return;
   });
 
+  // ── Reset per-turn state ────────────────────────────────────────────
+
+  pi.on("turn_start", async () => {
+    turnApproved = false;
+  });
+
   // ── Load execpolicy ──────────────────────────────────────────────────
 
   let currentPolicy: LoadedPolicy = { rules: [], bannedPrefixes: [], sources: [] };
@@ -464,28 +471,43 @@ export default function (pi: ExtensionAPI) {
       }
 
       if (evaluation.decision === "prompt") {
-        // Launch guardian LLM review in background, but allow immediately
-        // (non-blocking: the notification arrives after review completes)
-        guardianReview(command, ctx.cwd).then((result) => {
-          const icon = result.decision === "deny" ? "🚫" : result.decision === "prompt" ? "⚠️" : "✅";
-          ctx.ui.notify(
-            `${icon} Guardian: ${result.decision} — ${result.reason}\n  ${command.slice(0, 100)}`,
-            result.decision === "deny" ? "error" : result.decision === "prompt" ? "warning" : "info",
-          );
-        }).catch(() => {});
+        // Skip dialog if user already approved all for this turn
+        if (turnApproved) {
+          ctx.ui.notify(`✅ Auto-approved: ${command.slice(0, 80)}`, "info");
+        } else {
+        const justification = evaluation.matchedRules[0]?.justification ?? "requires review";
+        const preview = command.length > 80 ? command.slice(0, 80) + "..." : command;
 
-        ctx.ui.notify(
-          `⚠️ Auto-review: ${evaluation.matchedRules[0]?.justification ?? "requires review"}:\n  ${command.slice(0, 100)}`,
-          "warning",
+        // First do a quick guardian evaluation
+        let guardianAdvice = "";
+        try {
+          const gr = await guardianReview(command, ctx.cwd, 8000);
+          guardianAdvice = `\nGuardian assessment: ${gr.decision} — ${gr.reason}`;
+        } catch {
+          // guardian failed, proceed without advice
+        }
+
+        const choice = await ctx.ui.select(
+          `⚠️  ${justification}\n\n  $ ${preview}${guardianAdvice}`,
+          ["Allow once", "Deny", "Allow all this turn"],
         );
+
+        if (!choice || choice === "Deny") {
+          return { block: true, reason: `Denied by user: ${justification}` };
+        }
+
+        if (choice === "Allow all this turn") {
+          turnApproved = true;
+        }
+        } // end else (not turnApproved)
       }
 
       if (evaluation.decision === "allow" || evaluation.decision === null) {
-        // Even for allow, do a lightweight guardian check in background
+        // Non-blocking background review for transparent commands
         guardianReview(command, ctx.cwd).then((result) => {
           if (result.decision !== "allow") {
             ctx.ui.notify(
-              `⚠️ Guardian flagged: ${result.reason}\n  ${command.slice(0, 80)}`,
+              `⚠️ Guardian: ${result.reason}\n  ${command.slice(0, 80)}`,
               "warning",
             );
           }
