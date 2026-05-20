@@ -254,7 +254,7 @@ function buildBwrapArgs(command: string, cwd: string, config: SandboxConfig): st
  * in the sandbox doesn't interfere.
  */
 function ensureEmptyDir(path: string) {
-    execSync(`rm -rf "${path}" && mkdir -p "${path}"`, { stdio: "ignore" });
+  execSync(`rm -rf "${path}" && mkdir -p "${path}"`, { stdio: "ignore" });
 }
 
 // ── Bash operations: sandboxed ──────────────────────────────────────────────
@@ -594,7 +594,14 @@ export default function (pi: ExtensionAPI) {
         }
       } catch (e) {
         if (e instanceof Error && !e.message.includes("not a git repository")) {
-          return { result: { output: `Secret-detection scan failed: ${e.message}`, exitCode: 1, cancelled: false, truncated: false } };
+          return {
+            result: {
+              output: `Secret-detection scan failed: ${e.message}`,
+              exitCode: 1,
+              cancelled: false,
+              truncated: false,
+            },
+          };
         }
       }
     }
