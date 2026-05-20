@@ -69,7 +69,7 @@
 |----------|-----------------|----------------|----------------|-------------|
 | Rust     | `rustfmt`       | `clippy`       | `cargo test`   | `cargo`     |
 | Go       | `gofumpt`       | `go vet`       | `go test`      | `go mod`    |
-| Node.js  | `biome`/`prettier` | `biome`/`eslint` | `vitest`/`jest` | `pnpm` |
+| Node.js  | `oxfmt`         | `oxlint`       | `vitest`/`jest` | `pnpm`     |
 | Python   | `ruff`          | `ruff`/`mypy`  | `pytest`       | `uv`/`poetry` |
 | Zig      | `zig fmt`       | —              | `zig build test` | `zig build` |
 | C/C++    | `clang-format`  | `clang-tidy`   | `ctest`        | `CMake`    |
@@ -108,7 +108,7 @@
 |----------|---------------------------------------------------|
 | Rust     | `cargo fmt` → `cargo clippy` → `cargo build` → `cargo test` |
 | Go       | `gofumpt` → `go vet` → `go build` → `go test`    |
-| Node.js  | lint → typecheck → build → test                   |
+| Node.js  | `oxfmt` → `oxlint` → typecheck → build → test    |
 | Python   | `ruff check` → `mypy` → smallest test subset      |
 | Zig      | `zig fmt` → `zig build` → `zig build test`        |
 | C/C++    | `clang-format` → `clang-tidy` → build → `ctest`   |
