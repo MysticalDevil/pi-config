@@ -49,6 +49,11 @@ export default function (pi: ExtensionAPI) {
   let baseline = new Map<string, string>();
   let timer: ReturnType<typeof setInterval> | null = null;
 
+  // Global guard: prevent duplicate watchers across reloads
+  if ((globalThis as any).__fileWatcherTimer) {
+    clearInterval((globalThis as any).__fileWatcherTimer);
+  }
+
   function poll() {
     if (!cwd) return;
     const current = makeBaseline(cwd);
@@ -77,6 +82,7 @@ export default function (pi: ExtensionAPI) {
     cwd = ctx.cwd;
     baseline = makeBaseline(cwd);
     timer = setInterval(poll, POLL_INTERVAL);
+    (globalThis as any).__fileWatcherTimer = timer;
   });
 
   pi.on("session_shutdown", () => {
