@@ -46,8 +46,9 @@ function loadMemories(): Memory[] {
 		if (!fs.existsSync(MEMORY_FILE)) return [];
 		const data = fs.readFileSync(MEMORY_FILE, "utf-8");
 		return JSON.parse(data) as Memory[];
-	} catch {
-		return [];
+	} catch (e) {
+		if ((e as NodeJS.ErrnoException).code === "ENOENT") return [];
+		throw e;
 	}
 }
 

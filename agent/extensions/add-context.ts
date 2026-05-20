@@ -85,8 +85,9 @@ function walkDir(dir: string, maxDepth: number, files: Map<string, true>, curren
 	let entries: string[] = [];
 	try {
 		entries = fs.readdirSync(dir);
-	} catch {
-		return;
+	} catch (e) {
+		if ((e as NodeJS.ErrnoException).code === "ENOENT" || (e as NodeJS.ErrnoException).code === "EACCES") return;
+		throw e;
 	}
 
 	for (const entry of entries) {
@@ -100,8 +101,9 @@ function walkDir(dir: string, maxDepth: number, files: Map<string, true>, curren
 			} else if (stat.isDirectory()) {
 				walkDir(fullPath, maxDepth, files, currentDepth + 1);
 			}
-		} catch {
-			// Permission errors, etc.
+		} catch (e) {
+			if ((e as NodeJS.ErrnoException).code === "ENOENT" || (e as NodeJS.ErrnoException).code === "EACCES") continue;
+			throw e;
 		}
 	}
 }
@@ -113,8 +115,9 @@ function readFileContent(filePath: string): string | undefined {
 			return `[File too large: ${(stat.size / 1024).toFixed(0)}KB]`;
 		}
 		return fs.readFileSync(filePath, "utf-8");
-	} catch {
-		return undefined;
+	} catch (e) {
+		if ((e as NodeJS.ErrnoException).code === "ENOENT") return undefined;
+		throw e;
 	}
 }
 
@@ -148,9 +151,9 @@ function buildContextBlock(entries: ContextEntry[], cwd: string): string {
 					try {
 						const s = fs.statSync(fp);
 						dirFiles.push(`  ${s.isDirectory() ? f + "/" : f}`);
-					} catch { /* skip */ }
+					} catch (e) { if ((e).code !== "ENOENT" && (e).code !== "EACCES") throw e; }
 				}
-			} catch { /* skip */ }
+			} catch (e) { if ((e).code !== "ENOENT" && (e).code !== "EACCES") throw e; }
 			lines.push(...dirFiles.slice(0, 30));
 			if (dirFiles.length > 30) lines.push(`  ... ${dirFiles.length - 30} more entries`);
 			lines.push("");

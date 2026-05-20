@@ -99,8 +99,8 @@ function findFiles(dir: string, pattern: string): boolean {
 				if (findFiles(fullPath, pattern)) return true;
 			}
 		}
-	} catch {
-		// Ignore permission errors
+	} catch (e) {
+		if ((e as NodeJS.ErrnoException).code !== "ENOENT" && (e as NodeJS.ErrnoException).code !== "EACCES") throw e;
 	}
 	return false;
 }
@@ -143,8 +143,8 @@ function scanProject(cwd: string): ProjectInfo {
 					configFiles.push(entry);
 				}
 			}
-		} catch {
-			// Ignore permission errors
+		} catch (e) {
+			if ((e as NodeJS.ErrnoException).code !== "ENOENT" && (e as NodeJS.ErrnoException).code !== "EACCES") throw e;
 		}
 	}
 
@@ -188,14 +188,14 @@ function scanProject(cwd: string): ProjectInfo {
 		try {
 			const pkg = JSON.parse(fs.readFileSync(path.join(cwd, "package.json"), "utf-8"));
 			if (pkg.name) projectName = pkg.name;
-		} catch { /* ignore */ }
+		} catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; }
 	}
 	if (files.includes("Cargo.toml")) {
 		try {
 			const cargo = fs.readFileSync(path.join(cwd, "Cargo.toml"), "utf-8");
 			const match = cargo.match(/name\s*=\s*"(.+)"/);
 			if (match) projectName = match[1];
-		} catch { /* ignore */ }
+		} catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; }
 	}
 
 	// Generate directory structure tree
@@ -222,7 +222,7 @@ function generateTree(dir: string, prefix: string, maxDepth: number, currentDept
 
 	try {
 		entries = fs.readdirSync(dir);
-	} catch { return ""; }
+	} catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT" || (e as NodeJS.ErrnoException).code === "EACCES") return ""; throw e; }
 
 	// Filter and sort
 	entries = entries
@@ -249,7 +249,7 @@ function generateTree(dir: string, prefix: string, maxDepth: number, currentDept
 		const childPrefix = prefix + (isLast ? "    " : "│   ");
 
 		let stat;
-		try { stat = fs.statSync(fullPath); } catch { continue; }
+		try { stat = fs.statSync(fullPath); } catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT" || (e as NodeJS.ErrnoException).code === "EACCES") continue; throw e; }
 
 		if (stat.isDirectory()) {
 			result += `${prefix}${connector}${entry}/\n`;

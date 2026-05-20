@@ -33,8 +33,9 @@ function loadAgentsFromDir(dir: string, source: "user" | "project"): AgentConfig
 	let entries: fs.Dirent[];
 	try {
 		entries = fs.readdirSync(dir, { withFileTypes: true });
-	} catch {
-		return agents;
+	} catch (e) {
+		if ((e as NodeJS.ErrnoException).code === "ENOENT" || (e as NodeJS.ErrnoException).code === "EACCES") return agents;
+		throw e;
 	}
 
 	for (const entry of entries) {
@@ -45,8 +46,9 @@ function loadAgentsFromDir(dir: string, source: "user" | "project"): AgentConfig
 		let content: string;
 		try {
 			content = fs.readFileSync(filePath, "utf-8");
-		} catch {
-			continue;
+		} catch (e) {
+			if ((e as NodeJS.ErrnoException).code === "ENOENT") continue;
+			throw e;
 		}
 
 		const { frontmatter, body } = parseFrontmatter<Record<string, string>>(content);
@@ -77,8 +79,9 @@ function loadAgentsFromDir(dir: string, source: "user" | "project"): AgentConfig
 function isDirectory(p: string): boolean {
 	try {
 		return fs.statSync(p).isDirectory();
-	} catch {
-		return false;
+	} catch (e) {
+		if ((e as NodeJS.ErrnoException).code === "ENOENT") return false;
+		throw e;
 	}
 }
 

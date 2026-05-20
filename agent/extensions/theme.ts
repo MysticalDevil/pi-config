@@ -40,7 +40,9 @@ function getThemeNames(cwd: string): ThemeMeta[] {
 						const isDark = isDarkColor(bg);
 						themes.push({ file: entry.replace(".json", ""), name: content.name, isDark });
 					}
-				} catch { /* skip */ }
+				} catch (e) {
+					if (e instanceof SyntaxError) throw e;
+				}
 			}
 		}
 	}
@@ -56,7 +58,9 @@ function getThemeNames(cwd: string): ThemeMeta[] {
 						const name = content.name + " (project)";
 						themes.push({ file: entry.replace(".json", ""), name, isDark: false });
 					}
-				} catch { /* skip */ }
+				} catch (e) {
+					if (e instanceof SyntaxError) throw e;
+				}
 			}
 		}
 	}
@@ -81,7 +85,7 @@ function getSwatchColors(themeFile: string): Record<string, string> | null {
 	let themeData: any = null;
 
 	if (fs.existsSync(globalPath)) {
-		try { themeData = JSON.parse(fs.readFileSync(globalPath, "utf-8")); } catch { return null; }
+		try { themeData = JSON.parse(fs.readFileSync(globalPath, "utf-8")); } catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return null; throw e; }
 	}
 
 	if (!themeData || !themeData.colors) return null;
@@ -111,8 +115,9 @@ function readCurrentTheme(settingsPath: string): string {
 	try {
 		const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
 		return settings.theme || "dark";
-	} catch {
-		return "dark";
+	} catch (e) {
+		if ((e as NodeJS.ErrnoException).code === "ENOENT") return "dark";
+		throw e;
 	}
 }
 
@@ -122,7 +127,9 @@ function writeTheme(settingsPath: string, theme: string): void {
 		if (fs.existsSync(settingsPath)) {
 			settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
 		}
-	} catch { /* use defaults */ }
+	} catch (e) {
+		if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
+	}
 
 	settings.theme = theme;
 	fs.writeFileSync(settingsPath, JSON.stringify(settings, null, 2), "utf-8");

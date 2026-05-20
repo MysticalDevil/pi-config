@@ -315,8 +315,9 @@ async function runSingleAgent(
 				let event: any;
 				try {
 					event = JSON.parse(line);
-				} catch {
-					return;
+				} catch (e) {
+					if (e instanceof SyntaxError) return;
+					throw e;
 				}
 
 				if (event.type === "message_end" && event.message) {
@@ -385,17 +386,9 @@ async function runSingleAgent(
 		return currentResult;
 	} finally {
 		if (tmpPromptPath)
-			try {
-				fs.unlinkSync(tmpPromptPath);
-			} catch {
-				/* ignore */
-			}
+			try { fs.unlinkSync(tmpPromptPath); } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; }
 		if (tmpPromptDir)
-			try {
-				fs.rmdirSync(tmpPromptDir);
-			} catch {
-				/* ignore */
-			}
+			try { fs.rmdirSync(tmpPromptDir); } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e; }
 	}
 }
 
