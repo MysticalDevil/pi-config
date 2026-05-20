@@ -58,13 +58,20 @@ Captures git diff per turn and injects changes as context for the next turn.
 # Install pi (if not already)
 curl -fsSL https://pi.dev/install.sh | sh
 
-# Backup existing config, clone, restore auth
+# Backup existing config
 mv ~/.pi ~/.pi.bak
 git clone git@github.com:MysticalDevil/pi-config.git ~/.pi
-cp ~/.pi.bak/agent/auth.json ~/.pi/agent/
+
+# Migrate user-specific files
+cp ~/.pi.bak/agent/auth.json     ~/.pi/agent/   # API keys
+cp ~/.pi.bak/agent/settings.json ~/.pi/agent/   # model/theme prefs (optional)
+cp -r ~/.pi.bak/agent/sessions/  ~/.pi/agent/   # chat history (optional)
 ```
 
 Then in pi: `/reload`
+
+> `auth.json` is excluded from git. `sessions/` and `themes/` `skills/` are
+> also excluded — they are auto-discovered or user-specific.
 
 ## Lint
 
