@@ -57,7 +57,7 @@ function detectNode(dir: string): ProjectInfo | null {
 function detectRust(dir: string): ProjectInfo | null {
   if (!existsSync(join(dir, "Cargo.toml"))) return null;
   let edition: string | undefined;
-  try { const raw = readFileSync(join(dir, "Cargo.toml"), "utf-8"); const m = raw.match(/edition\s*=\s*"(\d+)"/); if (m) edition = m[1]; } catch {}
+  try { const raw = readFileSync(join(dir, "Cargo.toml"), "utf-8"); const m = raw.match(/edition\s*=\s*"(\d+)"/); if (m) edition = m[1]; } catch (e) { /* file unreadable — skip edition detection */ }
   return { language: "Rust", runtime: edition ? `Rust ${edition} edition` : "Rust", packageManager: "cargo", testRunner: "cargo test", linter: "clippy", formatter: "rustfmt", keyFiles: existingFiles(dir, ["Cargo.toml", "Cargo.lock"]) };
 }
 
@@ -71,7 +71,7 @@ function detectPython(dir: string): ProjectInfo | null {
   let testRunner: string | undefined;
   if (existsSync(join(dir, "conftest.py")) || existsSync(join(dir, "pytest.ini"))) testRunner = "pytest";
   let linter: string | undefined;
-  if (hasPyproject) { try { const raw = readFileSync(join(dir, "pyproject.toml"), "utf-8"); if (raw.includes("[tool.ruff]")) linter = "ruff"; } catch {} }
+  if (hasPyproject) { try { const raw = readFileSync(join(dir, "pyproject.toml"), "utf-8"); if (raw.includes("[tool.ruff]")) linter = "ruff"; } catch (e) { /* pyproject unreadable — skip */ } }
   return { language: "Python", packageManager, testRunner, linter, keyFiles: existingFiles(dir, ["pyproject.toml", "requirements.txt"]) };
 }
 

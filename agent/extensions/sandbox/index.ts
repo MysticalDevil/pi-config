@@ -176,7 +176,7 @@ function checkBwrap(): boolean {
   try {
     execSync("bwrap --version", { stdio: "ignore" });
     bwrapAvailable = true;
-  } catch {
+  } catch (e) {
     bwrapAvailable = false;
   }
   return bwrapAvailable;
@@ -254,8 +254,8 @@ function buildBwrapArgs(command: string, cwd: string, config: SandboxConfig): st
 function ensureEmptyDir(path: string) {
   try {
     execSync(`rm -rf "${path}" && mkdir -p "${path}"`, { stdio: "ignore" });
-  } catch {
-    // best effort
+  } catch (e) {
+    // non-critical: empty dir for bwrap mount hiding
   }
 }
 
@@ -287,7 +287,8 @@ function createSandboxedBashOps(config: SandboxConfig): BashOperations {
             if (child.pid) {
               try {
                 process.kill(-child.pid, "SIGKILL");
-              } catch {
+              } catch (e) {
+                console.error("sandbox: failed to kill process group, falling back to direct kill:", e);
                 child.kill("SIGKILL");
               }
             }
@@ -306,7 +307,8 @@ function createSandboxedBashOps(config: SandboxConfig): BashOperations {
           if (child.pid) {
             try {
               process.kill(-child.pid, "SIGKILL");
-            } catch {
+            } catch (e) {
+              console.error("sandbox: abort failed to kill process group, direct kill:", e);
               child.kill("SIGKILL");
             }
           }
@@ -486,7 +488,11 @@ export default function (pi: ExtensionAPI) {
             return { result: { output: `⚠️ Secret-detection blocked. ${findings.length} potential secret(s):\n${report}\n\nRemove secrets or set ALLOW_SECRETS=1 to bypass.`, exitCode: 1, cancelled: false, truncated: false } };
           }
         }
-      } catch { /* not a git repo or no staged changes */ }
+      } catch (e) {
+        if (e instanceof Error && !e.message.includes("not a git repository") && !e.message.includes("did not match any files")) {
+          ctx.ui.notify(`Secret-detection scan failed: ${e.message}`, "warning");
+        }
+      }
     }
 
     if (currentMode === "sandbox" && sandboxActive) {
@@ -523,7 +529,7 @@ export default function (pi: ExtensionAPI) {
             return { block: true, reason: `Secret-detection: ${findings.length} potential secret(s) in staged changes:\n${report}\n\nRemove secrets or set ALLOW_SECRETS=1 to bypass.` };
           }
         }
-      } catch (e) { /* execSync throws when not a git repo or no staged changes — safe to skip */ }
+      } catch (e) { /* not a git repo or no staged changes */ }
     }
 
     // auto-review: execpolicy + guardian evaluation
@@ -562,8 +568,8 @@ export default function (pi: ExtensionAPI) {
         try {
           const gr = await guardianReview(command, ctx.cwd, 8000);
           guardianAdvice = `\nGuardian assessment: ${gr.decision} — ${gr.reason}`;
-        } catch {
-          // guardian failed, proceed without advice
+        } catch (e) {
+          ctx.ui.notify(`Guardian review unavailable: ${e instanceof Error ? e.message : e}`, "warning");
         }
 
         const choice = await ctx.ui.select(
@@ -693,8 +699,10 @@ export default function (pi: ExtensionAPI) {
     // Clean up empty dir marker
     try {
       execSync("rm -rf /tmp/.bwrap-empty", { stdio: "ignore" });
-    } catch {
-      // best effort
+    } catch (e) {
+      if (e instanceof Error && (e as NodeJS.ErrnoException).code !== "ENOENT") {
+        console.error("sandbox: failed to clean up /tmp/.bwrap-empty:", e.message);
+      }
     }
   });
 

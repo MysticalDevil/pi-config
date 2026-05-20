@@ -54,7 +54,10 @@ function isGitRepo(cwd: string): boolean {
 function getHeadSha(cwd: string): string {
   try {
     return execSync("git rev-parse HEAD", { cwd, encoding: "utf-8" }).trim();
-  } catch {
+  } catch (e) {
+    if (e instanceof Error && !e.message.includes("not a git repository")) {
+      console.error("turn-diff: git rev-parse failed:", e.message);
+    }
     return "";
   }
 }
@@ -65,7 +68,10 @@ function getDiffStat(cwd: string): string {
       cwd,
       encoding: "utf-8",
     }).trim();
-  } catch {
+  } catch (e) {
+    if (e instanceof Error && !e.message.includes("not a git repository")) {
+      console.error("turn-diff: git diff --stat failed:", e.message);
+    }
     return "";
   }
 }
@@ -77,7 +83,10 @@ function getFullDiff(cwd: string): string {
       encoding: "utf-8",
       maxBuffer: 50 * 1024, // 50KB
     }).trim();
-  } catch {
+  } catch (e) {
+    if (e instanceof Error && !e.message.includes("not a git repository")) {
+      console.error("turn-diff: git diff failed:", e.message);
+    }
     return "";
   }
 }
@@ -92,7 +101,10 @@ function getUntrackedFiles(cwd: string): string[] {
       cwd,
       encoding: "utf-8",
     }).trim().split("\n").filter(Boolean);
-  } catch {
+  } catch (e) {
+    if (e instanceof Error && !e.message.includes("not a git repository")) {
+      console.error("turn-diff: git ls-files failed:", e.message);
+    }
     return [];
   }
 }

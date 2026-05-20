@@ -214,8 +214,10 @@ export function setupSnapshots(pi: ExtensionAPI) {
       // This is best-effort; we can't actually know the shell's cwd
       // without a more sophisticated mechanism
       captureSnapshot();
-    } catch {
-      // Best effort
+    } catch (e) {
+      if (e instanceof Error && !e.message?.includes("aborted")) {
+        console.error("shell-snapshot: capture failed:", e.message);
+      }
     }
   });
 

@@ -328,8 +328,8 @@ export function loadPolicy(cwd: string): LoadedPolicy {
           console.error(`Warning: Could not parse ${path}: ${e}`);
         }
       }
-    } catch {
-      // dir doesn't exist or can't read
+    } catch (e) {
+      // .pi/rules/ directory doesn't exist or can't be read
     }
   }
 

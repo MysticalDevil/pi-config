@@ -110,7 +110,7 @@ export async function guardianReview(
     const finish = (result: GuardianResult) => {
       if (settled) return;
       settled = true;
-      try { proc.kill("SIGTERM"); } catch { /* ignore */ }
+      try { proc.kill("SIGTERM"); } catch (e) { if ((e as NodeJS.ErrnoException).code !== "ESRCH") { console.error("guardian: failed to kill subprocess:", e); } }
       resolve(result);
     };
 
@@ -145,7 +145,9 @@ export async function guardianReview(
             });
             return;
           }
-        } catch { /* fall through */ }
+        } catch (e) {
+          // Failed to parse JSON from guardian output — assume safe
+        }
       }
 
       // Failed to parse — assume safe
