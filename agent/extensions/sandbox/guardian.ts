@@ -61,6 +61,16 @@ Respond with exactly:
 
 // ── Spawn guardian subprocess ─────────────────────────────────────────
 
+function getPiCommand(): { cmd: string; args: string[] } {
+  // Same logic as subagent — use process.execPath if it looks like pi,
+  // otherwise fall back to "pi".
+  const execName = process.argv[1] || "";
+  if (execName && execName.includes("pi")) {
+    return { cmd: process.execPath, args: [execName] };
+  }
+  return { cmd: "pi", args: [] };
+}
+
 export async function guardianReview(
   command: string,
   cwd: string,
@@ -79,10 +89,18 @@ export async function guardianReview(
   const prompt = buildGuardianPrompt(command, cwd);
 
   return new Promise((resolve) => {
-    const proc = spawn("pi", ["-p", "--no-session", prompt], {
+    const pi = getPiCommand();
+    const proc = spawn(pi.cmd, [
+      ...pi.args,
+      "-p",
+      "--no-session",
+      "--no-extensions",
+      prompt,
+    ], {
       cwd,
       stdio: ["ignore", "pipe", "pipe"],
       timeout: timeoutMs,
+      env: { ...process.env, PI_SKIP_VERSION_CHECK: "1" },
     });
 
     let stdout = "";

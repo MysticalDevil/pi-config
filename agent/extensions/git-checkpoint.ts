@@ -1,53 +1,98 @@
 /**
- * Git Checkpoint Extension
+ * Auto-Checkpoint — Per-turn git stash + rollback
  *
- * Creates git stash checkpoints at each turn so /fork can restore code state.
- * When forking, offers to restore code to that point in history.
+ * Before each LLM turn, creates a named git stash.
+ * Commands: /rollback, /checkpoint, --no-checkpoint
  */
 
+import { execSync } from "node:child_process";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
+let turnIndex = 0;
+let checkpointActive = true;
+let recordedStashes: string[] = [];
+const cwd = process.cwd();
+
+function isGitRepo(): boolean {
+  try { execSync("git rev-parse --git-dir", { cwd, stdio: "ignore" }); return true; }
+  catch { return false; }
+}
+
+async function git(pi: ExtensionAPI, args: string[]): Promise<{ stdout: string; code: number }> {
+  const r = await pi.exec("git", args);
+  return { stdout: (r.stdout ?? "").trim(), code: r.code ?? 1 };
+}
+
+async function getPiStashes(pi: ExtensionAPI): Promise<string[]> {
+  const { stdout } = await git(pi, ["stash", "list", "--format=%gd %gs"]);
+  return stdout.split("\n").filter((l) => l.includes("pi:")).map((l) => l.split(" ")[0]);
+}
+
 export default function (pi: ExtensionAPI) {
-	const checkpoints = new Map<string, string>();
-	let currentEntryId: string | undefined;
+  pi.registerFlag("no-checkpoint", {
+    description: "Disable auto git stash checkpointing",
+    type: "boolean", default: false,
+  });
 
-	// Track the current entry ID when user messages are saved
-	pi.on("tool_result", async (_event, ctx) => {
-		const leaf = ctx.sessionManager.getLeafEntry();
-		if (leaf) currentEntryId = leaf.id;
-	});
+  pi.on("session_start", async (_event, ctx) => {
+    const noCheckpoint = pi.getFlag("no-checkpoint") as boolean;
+    checkpointActive = !noCheckpoint && isGitRepo();
+    turnIndex = 0; recordedStashes = [];
+    if (checkpointActive)
+      ctx.ui.setStatus("checkpoint", ctx.ui.theme.fg("dim", "💾 Auto-checkpoint ready"));
+    else if (!isGitRepo())
+      ctx.ui.notify("Auto-checkpoint: not a git repository", "info");
+  });
 
-	pi.on("turn_start", async () => {
-		// Create a git stash entry before LLM makes changes
-		const { stdout } = await pi.exec("git", ["stash", "create"]);
-		const ref = stdout.trim();
-		if (ref && currentEntryId) {
-			checkpoints.set(currentEntryId, ref);
-		}
-	});
+  pi.on("turn_start", async (_event, ctx) => {
+    if (!checkpointActive) return;
+    turnIndex++;
+    const { stdout } = await git(pi, ["status", "--porcelain"]);
+    if (!stdout) return;
+    const { code } = await git(pi, ["stash", "push", "-m", "pi:turn-"+turnIndex, "--include-untracked"]);
+    if (code === 0) {
+      recordedStashes.push("pi:turn-"+turnIndex);
+      ctx.ui.setStatus("checkpoint", ctx.ui.theme.fg("dim", "💾 turn #"+turnIndex+" stashed"));
+    }
+  });
 
-	pi.on("session_before_fork", async (event, ctx) => {
-		const ref = checkpoints.get(event.entryId);
-		if (!ref) return;
+  pi.on("session_shutdown", async () => {
+    if (!checkpointActive || recordedStashes.length === 0) return;
+    const stashes = await getPiStashes(pi);
+    for (const ref of stashes) await git(pi, ["stash", "drop", ref]);
+    recordedStashes = [];
+  });
 
-		if (!ctx.hasUI) {
-			// In non-interactive mode, don't restore automatically
-			return;
-		}
+  pi.registerCommand("checkpoint", {
+    description: "Create a named git stash checkpoint",
+    handler: async (args, ctx) => {
+      if (!isGitRepo()) { ctx.ui.notify("Not a git repository", "error"); return; }
+      const name = (args || "").trim() || ("manual-"+Date.now());
+      const msg = "pi:" + name;
+      const { stdout } = await git(pi, ["status", "--porcelain"]);
+      if (!stdout) { ctx.ui.notify("Nothing to checkpoint (clean tree)", "info"); return; }
+      const { code } = await git(pi, ["stash", "push", "-m", msg, "--include-untracked"]);
+      if (code === 0) { recordedStashes.push(msg); ctx.ui.notify("Checkpoint saved: " + name, "info"); }
+      else ctx.ui.notify("Checkpoint failed", "error");
+    },
+  });
 
-		const choice = await ctx.ui.select("Restore code state?", [
-			"Yes, restore code to that point",
-			"No, keep current code",
-		]);
-
-		if (choice?.startsWith("Yes")) {
-			await pi.exec("git", ["stash", "apply", ref]);
-			ctx.ui.notify("Code restored to checkpoint", "info");
-		}
-	});
-
-	pi.on("agent_end", async () => {
-		// Clear checkpoints after agent completes
-		checkpoints.clear();
-	});
+  pi.registerCommand("rollback", {
+    description: "Revert to the latest pi checkpoint stash",
+    handler: async (_args, ctx) => {
+      if (!isGitRepo()) { ctx.ui.notify("Not a git repository", "error"); return; }
+      const stashes = await getPiStashes(pi);
+      if (stashes.length === 0) { ctx.ui.notify("No pi checkpoints found", "info"); return; }
+      const latestStash = stashes[0];
+      const confirmed = await ctx.ui.confirm("Rollback",
+        "Revert to checkpoint " + latestStash + "?\nAll uncommitted changes since will be restored.");
+      if (!confirmed) return;
+      const { code } = await git(pi, ["stash", "pop", latestStash]);
+      if (code === 0) {
+        recordedStashes = recordedStashes.filter((s) => s !== latestStash);
+        ctx.ui.notify("Rolled back to checkpoint", "info");
+      } else
+        ctx.ui.notify("Rollback failed — there may be conflicts.", "error");
+    },
+  });
 }
