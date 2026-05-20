@@ -511,7 +511,7 @@ export default function (pi: ExtensionAPI) {
 
   // ── User bash (!! and ! commands) ─────────────────────────────────────
 
-  pi.on("user_bash", (event) => {
+  pi.on("user_bash", (event, ctx) => {
     const command = event.command;
 
     // Secret detection on git commit
