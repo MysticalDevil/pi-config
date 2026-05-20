@@ -92,12 +92,23 @@ const SAFE_PATTERNS = [
   /^\s*fd\b/,
   /^\s*bat\b/,
   /^\s*eza\b/,
+  /^\s*cd\b/,
+  /^\s*echo\b/,
+  /^\s*export\b/,
 ];
 
 export function isSafeCommand(command: string): boolean {
-  const isDestructive = DESTRUCTIVE_PATTERNS.some((p) => p.test(command));
-  const isSafe = SAFE_PATTERNS.some((p) => p.test(command));
-  return !isDestructive && isSafe;
+  // Split on && and ; then check each subcommand
+  const subcommands = command
+    .split(/&&|;/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+  for (const sub of subcommands) {
+    const isDestructive = DESTRUCTIVE_PATTERNS.some((p) => p.test(sub));
+    const isSafe = SAFE_PATTERNS.some((p) => p.test(sub));
+    if (isDestructive || !isSafe) return false;
+  }
+  return true;
 }
 
 export interface TodoItem {
