@@ -472,7 +472,23 @@ export default function (pi: ExtensionAPI) {
 
   // ── User bash (!! and ! commands) ─────────────────────────────────────
 
-  pi.on("user_bash", () => {
+  pi.on("user_bash", (event) => {
+    const command = event.command;
+
+    // Secret detection on git commit
+    if (/\bgit\s+commit\b/.test(command) && !/\bgit\s+commit\s*--dry-run\b/.test(command)) {
+      try {
+        const diff = execSync("git diff --cached --unified=0", { cwd: event.cwd, encoding: "utf-8", maxBuffer: 2 * 1024 * 1024 });
+        if (diff.trim()) {
+          const findings = scanGitDiff(diff);
+          if (findings.length > 0 && !process.env.ALLOW_SECRETS) {
+            const report = findings.map((f) => `  ${f.file}:${f.line}  ${f.type}: ${f.masked}`).join("\n");
+            return { result: { output: `⚠️ Secret-detection blocked. ${findings.length} potential secret(s):\n${report}\n\nRemove secrets or set ALLOW_SECRETS=1 to bypass.`, exitCode: 1, cancelled: false, truncated: false } };
+          }
+        }
+      } catch { /* not a git repo or no staged changes */ }
+    }
+
     if (currentMode === "sandbox" && sandboxActive) {
       return { operations: createSandboxedBashOps(sandboxConfig) };
     }
