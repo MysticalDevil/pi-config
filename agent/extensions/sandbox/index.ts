@@ -348,6 +348,56 @@ function isWriteProtected(filepath: string, patterns: string[]): boolean {
   return false;
 }
 
+
+// ── Secret scanner for git diff ─────────────────────────────────────────
+
+interface DiffFinding {
+  file: string;
+  line: number;
+  type: string;
+  masked: string;
+}
+
+function scanGitDiff(diff: string): DiffFinding[] {
+  const findings: DiffFinding[] = [];
+  const lines = diff.split("\n");
+  let currentFile = "";
+  let currentLine = 0;
+
+  const patterns: Array<{ pattern: RegExp; type: string }> = [
+    { pattern: /([a-zA-Z0-9_]+)\s*=\s*["']?(sk-[a-zA-Z0-9]{20,})["']?/g, type: "API key" },
+    { pattern: /([a-zA-Z0-9_]+)\s*=\s*["']?(AIza[a-zA-Z0-9_-]{30,})["']?/g, type: "Google API key" },
+    { pattern: /([a-zA-Z0-9_]+)\s*=\s*["']?(ghp_[a-zA-Z0-9]{30,})["']?/g, type: "GitHub token" },
+    { pattern: /([a-zA-Z0-9_]+)\s*=\s*["']?(github_pat_[a-zA-Z0-9_]{30,})["']?/g, type: "GitHub token" },
+    { pattern: /([a-zA-Z0-9_]+)\s*=\s*["']?(xox[bprs]-[a-zA-Z0-9-]{30,})["']?/g, type: "Slack token" },
+    { pattern: /([a-zA-Z0-9_]+)\s*=\s*["']?(AKIA[a-zA-Z0-9]{16})["']?/g, type: "AWS key" },
+    { pattern: /(-----BEGIN (?:RSA|OPENSSH|EC|DSA) PRIVATE KEY-----)/g, type: "Private key" },
+    { pattern: /([a-zA-Z0-9_]+)\s*[:=]\s*["']?(mongodb(?:\+srv)?:\/\/[^:]+:[^@]+@)/g, type: "DB connection" },
+    { pattern: /([a-zA-Z0-9_]+)\s*[:=]\s*["']?(postgres(?:ql)?:\/\/[^:]+:[^@]+@)/g, type: "DB connection" },
+    { pattern: /([a-zA-Z0-9_]+)\s*[:=]\s*["']?(redis(?:s)?:\/\/[^:]+:[^@]+@)/g, type: "Redis connection" },
+    { pattern: /([a-zA-Z0-9_]+)\s*=\s*["']?(https?:\/\/[^:]+:[^@]+@)/g, type: "URL credentials" },
+    { pattern: /(?:password|passwd|secret|token|api[_-]?key)\s*[:=]\s*["']([^"'\s]{8,})["']?/gi, type: "Credential" },
+  ];
+
+  for (const line of lines) {
+    if (line.startsWith("--- ") || line.startsWith("+++ ")) { currentFile = line.slice(6).trim(); continue; }
+    if (line.startsWith("@@")) { const m = line.match(/^@@ -(\d+)/); currentLine = m ? parseInt(m[1], 10) : currentLine; continue; }
+    if (!line.startsWith("+") || line.startsWith("+++")) continue;
+    currentLine++;
+    const added = line.slice(1);
+    for (const { pattern, type } of patterns) {
+      pattern.lastIndex = 0;
+      let match: RegExpExecArray | null;
+      while ((match = pattern.exec(added)) !== null) {
+        const captured = match[1] || match[0];
+        const masked = captured.length > 25 ? captured.slice(0, 12) + "..." + captured.slice(-5) : "***";
+        findings.push({ file: currentFile, line: currentLine, type, masked });
+      }
+    }
+  }
+  return findings;
+}
+
 // ── Main Extension ──────────────────────────────────────────────────────────
 
 export default function (pi: ExtensionAPI) {
@@ -426,7 +476,6 @@ export default function (pi: ExtensionAPI) {
     if (currentMode === "sandbox" && sandboxActive) {
       return { operations: createSandboxedBashOps(sandboxConfig) };
     }
-    // auto-review and full-access use default native ops
     return;
   });
 
@@ -446,6 +495,20 @@ export default function (pi: ExtensionAPI) {
     if (event.toolName !== "bash") return;
 
     const command = event.input.command as string;
+
+    // ── Secret detection: scan staged diff on git commit (all modes) ──
+    if (/\bgit\s+commit\b/.test(command) && !/\bgit\s+commit\s*--dry-run\b/.test(command)) {
+      try {
+        const diff = execSync("git diff --cached --unified=0", { cwd: ctx.cwd, encoding: "utf-8", maxBuffer: 2 * 1024 * 1024 });
+        if (diff.trim()) {
+          const findings = scanGitDiff(diff);
+          if (findings.length > 0 && !process.env.ALLOW_SECRETS) {
+            const report = findings.map((f) => `  ${f.file}:${f.line}  ${f.type}: ${f.masked}`).join("\n");
+            return { block: true, reason: `Secret-detection: ${findings.length} potential secret(s) in staged changes:\n${report}\n\nRemove secrets or set ALLOW_SECRETS=1 to bypass.` };
+          }
+        }
+      } catch (e) { /* execSync throws when not a git repo or no staged changes — safe to skip */ }
+    }
 
     // auto-review: execpolicy + guardian evaluation
     if (currentMode === "auto-review") {
