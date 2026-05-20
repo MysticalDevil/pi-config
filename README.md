@@ -55,17 +55,16 @@ Captures git diff per turn and injects changes as context for the next turn.
 ## Setup
 
 ```bash
-# Fresh install
-rm -rf ~/.pi && git clone git@github.com:MysticalDevil/pi-config.git ~/.pi
+# Install pi (if not already)
+curl -fsSL https://pi.dev/install.sh | sh
 
-# Or: backup & migrate (preserves auth.json + sessions)
+# Backup existing config, clone, restore auth
 mv ~/.pi ~/.pi.bak
 git clone git@github.com:MysticalDevil/pi-config.git ~/.pi
 cp ~/.pi.bak/agent/auth.json ~/.pi/agent/
-
-# Reload extensions in pi
-/reload
 ```
+
+Then in pi: `/reload`
 
 ## Lint
 
