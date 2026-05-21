@@ -39,6 +39,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
   let planModeEnabled = false;
   let executionMode = false;
   let todoItems: TodoItem[] = [];
+  let previousActiveTools: string[] | null = null;
 
   pi.registerFlag("plan", {
     description: "Start in plan mode (read-only exploration)",
@@ -77,16 +78,22 @@ export default function planModeExtension(pi: ExtensionAPI): void {
     }
   }
 
+  function restoreActiveTools(): void {
+    pi.setActiveTools(previousActiveTools ?? NORMAL_MODE_TOOLS);
+    previousActiveTools = null;
+  }
+
   function togglePlanMode(ctx: ExtensionContext): void {
     planModeEnabled = !planModeEnabled;
     executionMode = false;
     todoItems = [];
 
     if (planModeEnabled) {
+      previousActiveTools = [...pi.getActiveTools()];
       pi.setActiveTools(PLAN_MODE_TOOLS);
       ctx.ui.notify(`Plan mode enabled. Tools: ${PLAN_MODE_TOOLS.join(", ")}`);
     } else {
-      pi.setActiveTools(NORMAL_MODE_TOOLS);
+      restoreActiveTools();
       ctx.ui.notify("Plan mode disabled. Full access restored.");
     }
     updateStatus(ctx);
@@ -97,6 +104,7 @@ export default function planModeExtension(pi: ExtensionAPI): void {
       enabled: planModeEnabled,
       todos: todoItems,
       executing: executionMode,
+      previousTools: previousActiveTools,
     });
   }
 
@@ -238,7 +246,7 @@ After completing a step, include a [DONE:n] tag in your response.`,
         );
         executionMode = false;
         todoItems = [];
-        pi.setActiveTools(NORMAL_MODE_TOOLS);
+        restoreActiveTools();
         updateStatus(ctx);
         persistState(); // Save cleared state so resume doesn't restore old execution mode
       }
@@ -278,7 +286,7 @@ After completing a step, include a [DONE:n] tag in your response.`,
     if (choice?.startsWith("Execute")) {
       planModeEnabled = false;
       executionMode = todoItems.length > 0;
-      pi.setActiveTools(NORMAL_MODE_TOOLS);
+      restoreActiveTools();
       updateStatus(ctx);
 
       const execMessage =
@@ -312,13 +320,23 @@ After completing a step, include a [DONE:n] tag in your response.`,
           e.type === "custom" && e.customType === "plan-mode",
       )
       .pop() as
-      | { data?: { enabled: boolean; todos?: TodoItem[]; executing?: boolean } }
+      | {
+          data?: {
+            enabled: boolean;
+            todos?: TodoItem[];
+            executing?: boolean;
+            previousTools?: string[];
+          };
+        }
       | undefined;
 
     if (planModeEntry?.data) {
       planModeEnabled = planModeEntry.data.enabled ?? planModeEnabled;
       todoItems = planModeEntry.data.todos ?? todoItems;
       executionMode = planModeEntry.data.executing ?? executionMode;
+      previousActiveTools = planModeEntry.data.previousTools
+        ? [...planModeEntry.data.previousTools]
+        : previousActiveTools;
     }
 
     // On resume: re-scan messages to rebuild completion state
