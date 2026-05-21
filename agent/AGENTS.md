@@ -65,16 +65,16 @@
 
 ## Language Tooling Defaults
 
-| Language | Formatter       | Linter         | Test runner    | Package mgr |
-|----------|-----------------|----------------|----------------|-------------|
-| Rust     | `rustfmt`       | `clippy`       | `cargo test`   | `cargo`     |
-| Go       | `gofumpt`       | `go vet`       | `go test`      | `go mod`    |
-| Node.js  | `oxfmt`         | `oxlint`       | `vitest`/`jest` | `pnpm`     |
-| Python   | `ruff`          | `ruff`/`mypy`  | `pytest`       | `uv`/`poetry` |
-| Zig      | `zig fmt`       | —              | `zig build test` | `zig build` |
-| C/C++    | `clang-format`  | `clang-tidy`   | `ctest`        | `CMake`    |
-| Swift    | `swift-format`  | —              | `swift test`   | `swift`    |
-| C#       | `dotnet format` | —              | `dotnet test`  | `dotnet`   |
+| Language | Formatter       | Linter        | Test runner      | Package mgr   |
+| -------- | --------------- | ------------- | ---------------- | ------------- |
+| Rust     | `rustfmt`       | `clippy`      | `cargo test`     | `cargo`       |
+| Go       | `gofumpt`       | `go vet`      | `go test`        | `go mod`      |
+| Node.js  | `oxfmt`         | `oxlint`      | `vitest`/`jest`  | `pnpm`        |
+| Python   | `ruff`          | `ruff`/`mypy` | `pytest`         | `uv`/`poetry` |
+| Zig      | `zig fmt`       | —             | `zig build test` | `zig build`   |
+| C/C++    | `clang-format`  | `clang-tidy`  | `ctest`          | `CMake`       |
+| Swift    | `swift-format`  | —             | `swift test`     | `swift`       |
+| C#       | `dotnet format` | —             | `dotnet test`    | `dotnet`      |
 
 ## Type Safety
 
@@ -104,13 +104,13 @@
 
 ## Minimal Acceptance Matrix
 
-| Language | Pipeline                                          |
-|----------|---------------------------------------------------|
+| Language | Pipeline                                                    |
+| -------- | ----------------------------------------------------------- |
 | Rust     | `cargo fmt` → `cargo clippy` → `cargo build` → `cargo test` |
-| Go       | `gofumpt` → `go vet` → `go build` → `go test`    |
-| Node.js  | `oxfmt` → `oxlint` → typecheck → build → test    |
-| Python   | `ruff check` → `mypy` → smallest test subset      |
-| Zig      | `zig fmt` → `zig build` → `zig build test`        |
-| C/C++    | `clang-format` → `clang-tidy` → build → `ctest`   |
-| Scripts  | `shellcheck` → smoke test                         |
-| Markdown | lint (if available)                               |
+| Go       | `gofumpt` → `go vet` → `go build` → `go test`               |
+| Node.js  | `oxfmt` → `oxlint` → typecheck → build → test               |
+| Python   | `ruff check` → `mypy` → smallest test subset                |
+| Zig      | `zig fmt` → `zig build` → `zig build test`                  |
+| C/C++    | `clang-format` → `clang-tidy` → build → `ctest`             |
+| Scripts  | `shellcheck` → smoke test                                   |
+| Markdown | lint (if available)                                         |
