@@ -1,14 +1,9 @@
 /**
  * btw.ts — /btw side-agent core: conversation snapshot, history,
- * in-process model call with reasoning suppressed.
- *
- * The side agent uses complete() with reasoning: "off" to prevent
- * DSML/reasoning output from leaking into the UI. History is process-scoped
- * via globalThis; snapshots are captured at message_end and invalidated on
- * compact/tree navigation.
+ * in-process model call via completeSimple with reasoning suppressed.
  */
 
-import { complete, type Message, type UserMessage } from "@earendil-works/pi-ai";
+import { completeSimple, type Message, type UserMessage } from "@earendil-works/pi-ai";
 import {
   convertToLlm,
   type ExtensionAPI,
@@ -18,15 +13,18 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { type BtwHistoryEntry, type BtwOverlay, showBtwOverlay } from "./btw-ui.js";
 
-// ── System prompt (loaded at module init) ─────────────────────────────
+// ── System prompt ─────────────────────────────────────────────────────
 
-import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
-
-const BTW_SYSTEM_PROMPT = readFileSync(
-  fileURLToPath(new URL("./prompts/btw-system.txt", import.meta.url)),
-  "utf-8",
-).trimEnd();
+const BTW_SYSTEM_PROMPT = [
+  "You are a concise side assistant. The user is mid-task with a coding agent and needs a quick answer.",
+  "",
+  "Rules:",
+  "1. Answer in plain text — you have no tools.",
+  "2. Keep responses brief and actionable.",
+  "3. Reference the main conversation context when relevant.",
+  "4. Use markdown for code blocks and links.",
+  "5. Do NOT output DSML, XML, or tool-call markup.",
+].join("\n");
 
 // ── Global state ──────────────────────────────────────────────────────
 
@@ -52,7 +50,6 @@ function sessionKey(ctx: ExtensionContext): string {
 function snapshotConversation(ctx: ExtensionContext): Message[] {
   const cached = store().snapshots.get(sessionKey(ctx));
   if (cached) return cached;
-  // Cold start: read live branch
   const branch = ctx.sessionManager.getBranch() as SessionEntry[];
   const msgs = branch
     .filter((e): e is SessionEntry & { type: "message" } => e.type === "message")
@@ -94,9 +91,9 @@ async function runSideAgent(
   };
 
   try {
-    const response = await complete(
+    const response = await completeSimple(
       ctx.model,
-      { systemPrompt: BTW_SYSTEM_PROMPT, messages: [...conversation, ...historyMsgs, userMsg] },
+      { systemPrompt: BTW_SYSTEM_PROMPT, messages: [...conversation, ...historyMsgs, userMsg], tools: [] },
       { apiKey: auth.apiKey, headers: auth.headers, signal, reasoning: "off" },
     );
 
@@ -107,10 +104,12 @@ async function runSideAgent(
       return;
     }
 
+    // Strip DSML markup that reasoning models may emit despite reasoning: off
     const answer = (response.content as Array<{ type: string; text?: string }>)
       .filter((c) => c.type === "text" && typeof c.text === "string")
       .map((c) => c.text!)
       .join("\n")
+      .replace(/<\|[^|]*\|[^>]*>/g, "")  // strip <| DSML | ...> tags
       .trim();
 
     if (!answer) {
@@ -166,7 +165,6 @@ export function registerBtwCommand(pi: ExtensionAPI): void {
         onClear: () => store().histories.set(sessionKey(ctx), []),
       });
 
-      // Wait for overlay to be ready, then fire the side agent call
       const ov = await overlay;
       await runSideAgent(question, ctx, ov, controller.signal);
       await overlayPromise;
