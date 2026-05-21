@@ -7,7 +7,7 @@ import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 interface ProjectInfo {
-  language: string;
+  languages: string[];
   runtime?: string;
   packageManager?: string;
   testRunner?: string;
@@ -61,7 +61,7 @@ function detectNode(dir: string): ProjectInfo | null {
     if (allDeps.prettier || existsSync(join(dir, ".prettierrc"))) formatter = "prettier";
   }
   return {
-    language,
+    languages: [language],
     runtime,
     packageManager,
     testRunner,
@@ -82,7 +82,7 @@ function detectRust(dir: string): ProjectInfo | null {
     if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
   }
   return {
-    language: "Rust",
+    languages: ["Rust"],
     runtime: edition ? `Rust ${edition} edition` : "Rust",
     packageManager: "cargo",
     testRunner: "cargo test",
@@ -112,7 +112,7 @@ function detectPython(dir: string): ProjectInfo | null {
     }
   }
   return {
-    language: "Python",
+    languages: ["Python"],
     packageManager,
     testRunner,
     linter,
@@ -123,7 +123,7 @@ function detectPython(dir: string): ProjectInfo | null {
 function detectGo(dir: string): ProjectInfo | null {
   if (!existsSync(join(dir, "go.mod"))) return null;
   return {
-    language: "Go",
+    languages: ["Go"],
     packageManager: "go modules",
     testRunner: "go test",
     keyFiles: existingFiles(dir, ["go.mod"]),
@@ -133,7 +133,7 @@ function detectGo(dir: string): ProjectInfo | null {
 function detectZig(dir: string): ProjectInfo | null {
   if (!existsSync(join(dir, "build.zig")) && !existsSync(join(dir, "build.zig.zon"))) return null;
   return {
-    language: "Zig",
+    languages: ["Zig"],
     packageManager: "zig build",
     testRunner: "zig build test",
     keyFiles: existingFiles(dir, ["build.zig", "build.zig.zon"]),
@@ -159,21 +159,37 @@ function detectContainer(dir: string): string | undefined {
 }
 
 function detectAll(dir: string): ProjectInfo {
-  const result = detectNode(dir) ??
-    detectRust(dir) ??
-    detectPython(dir) ??
-    detectGo(dir) ??
-    detectZig(dir) ?? { language: "unknown", keyFiles: [] };
-  result.buildSystem = detectBuild(dir);
-  result.ci = detectCI(dir);
-  result.container = detectContainer(dir);
-  return result;
+  const results = [
+    detectNode(dir),
+    detectRust(dir),
+    detectPython(dir),
+    detectGo(dir),
+    detectZig(dir),
+  ].filter((r): r is ProjectInfo => r !== null);
+
+  if (results.length === 0) {
+    return { languages: ["unknown"], keyFiles: [] };
+  }
+
+  const merged: ProjectInfo = {
+    languages: results.map((r) => r.languages[0]).filter(Boolean),
+    runtime: results.find((r) => r.runtime)?.runtime,
+    packageManager: results.find((r) => r.packageManager)?.packageManager,
+    testRunner: results.find((r) => r.testRunner)?.testRunner,
+    linter: results.find((r) => r.linter)?.linter,
+    formatter: results.find((r) => r.formatter)?.formatter,
+    keyFiles: [...new Set(results.flatMap((r) => r.keyFiles))],
+  };
+  merged.buildSystem = detectBuild(dir);
+  merged.ci = detectCI(dir);
+  merged.container = detectContainer(dir);
+  return merged;
 }
 
 function formatContext(info: ProjectInfo): string {
   const lines: string[] = [];
-  if (info.language !== "unknown") {
-    lines.push(`Project: ${info.language}`);
+  if (info.languages.length > 0 && info.languages[0] !== "unknown") {
+    lines.push(`Project: ${info.languages.join(", ")}`);
     if (info.runtime) lines.push(`Runtime: ${info.runtime}`);
     if (info.packageManager) lines.push(`Package manager: ${info.packageManager}`);
     if (info.testRunner) lines.push(`Test runner: ${info.testRunner}`);
@@ -201,8 +217,10 @@ export default function (pi: ExtensionAPI) {
         "workspace",
         ctx.ui.theme.fg(
           "dim",
-          info.language !== "unknown"
-            ? "📁 " + info.language + (info.packageManager ? " (" + info.packageManager + ")" : "")
+          info.languages.length > 0 && info.languages[0] !== "unknown"
+            ? "📁 " +
+                info.languages.join("/") +
+                (info.packageManager ? " (" + info.packageManager + ")" : "")
             : "📁 generic project",
         ),
       );

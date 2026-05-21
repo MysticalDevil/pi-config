@@ -160,20 +160,16 @@ export default function (pi: ExtensionAPI) {
         ctx.ui.notify("Preparing summary...", "info");
       }
 
-      const model = getModel("openai", "gpt-5.2");
-      if (!model && ctx.hasUI) {
-        ctx.ui.notify("Model openai/gpt-5.2 not found", "warning");
+      // Prefer current session model, fall back to a cheap fast model
+      const model = ctx.model ?? getModel("openai", "gpt-4.1-mini");
+      if (!model) {
+        ctx.ui.notify("No model available for summarization", "error");
+        return;
       }
 
-      const auth = model ? await ctx.modelRegistry.getApiKeyAndHeaders(model) : undefined;
-      if (auth && !auth.ok && ctx.hasUI) {
-        ctx.ui.notify(auth.error, "warning");
-      }
-      if (auth?.ok && !auth.apiKey && ctx.hasUI) {
-        ctx.ui.notify("No API key for openai/gpt-5.2", "warning");
-      }
-
-      if (!model || !auth?.ok || !auth.apiKey) {
+      const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+      if (!auth.ok || !auth.apiKey) {
+        ctx.ui.notify(auth.error ?? "No API key for summarization model", "error");
         return;
       }
 

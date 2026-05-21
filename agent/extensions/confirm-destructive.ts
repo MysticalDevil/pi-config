@@ -28,16 +28,17 @@ export default function (pi: ExtensionAPI) {
       return;
     }
 
-    // reason === "resume" - check if there are unsaved changes (messages since last assistant response)
+    // reason === "resume" - check if there are agent responses or tool results
     const entries = ctx.sessionManager.getEntries();
-    const hasUnsavedWork = entries.some(
-      (e): e is SessionMessageEntry => e.type === "message" && e.message.role === "user",
+    const hasAgentActivity = entries.some(
+      (e): e is SessionMessageEntry =>
+        e.type === "message" && (e.message.role === "assistant" || e.message.role === "toolResult"),
     );
 
-    if (hasUnsavedWork) {
+    if (hasAgentActivity) {
       const confirmed = await ctx.ui.confirm(
         "Switch session?",
-        "You have messages in the current session. Switch anyway?",
+        "The current session has agent activity. Switch anyway?",
       );
 
       if (!confirmed) {

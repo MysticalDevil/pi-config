@@ -288,11 +288,13 @@ function buildContextBlock(entries: ContextEntry[], cwd: string): string {
             const s = fs.statSync(fp);
             dirFiles.push(`  ${s.isDirectory() ? f + "/" : f}`);
           } catch (e) {
-            if (e.code !== "ENOENT" && e.code !== "EACCES") throw e;
+            const err = e as NodeJS.ErrnoException;
+            if (err.code !== "ENOENT" && err.code !== "EACCES") throw e;
           }
         }
       } catch (e) {
-        if (e.code !== "ENOENT" && e.code !== "EACCES") throw e;
+        const err = e as NodeJS.ErrnoException;
+        if (err.code !== "ENOENT" && err.code !== "EACCES") throw e;
       }
       lines.push(...dirFiles.slice(0, 30));
       if (dirFiles.length > 30) lines.push(`  ... ${dirFiles.length - 30} more entries`);

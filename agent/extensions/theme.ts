@@ -206,7 +206,7 @@ export default function (pi: ExtensionAPI) {
         let selectedIdx = themes.findIndex((t) => t.file === currentTheme);
         if (selectedIdx < 0) selectedIdx = 0;
 
-        const render = () => {
+        const render = (_width: number) => {
           const lines: string[] = [];
           lines.push("");
           lines.push(theme.fg("accent", theme.bold(" Theme Switcher ")));
@@ -283,7 +283,7 @@ export default function (pi: ExtensionAPI) {
               if (selected && selected.file !== currentTheme) {
                 writeTheme(settingsPath, selected.file);
                 // Reload to apply
-                ctx.reload().then(() => done(undefined));
+                ctx.reload().finally(() => done(undefined));
               } else {
                 done(undefined);
               }

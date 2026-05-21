@@ -61,7 +61,10 @@ class HookRegistry {
   private postHooks: (PostToolUseHook & { _enabled: boolean })[] = [];
 
   register(hook: PreToolUseHook | PostToolUseHook): void {
-    if ("handler" in hook && this.isPreHook(hook)) {
+    // Discriminate by handler param count:
+    // PreToolUseHook: (toolName, params)
+    // PostToolUseHook: (toolName, params, result)
+    if (hook.handler.length <= 2) {
       this.preHooks.push({ ...hook, _enabled: true });
       this.preHooks.sort((a, b) => (a.priority ?? 100) - (b.priority ?? 100));
     } else {
@@ -191,12 +194,7 @@ class HookRegistry {
     return contexts;
   }
 
-  private isPreHook(hook: PreToolUseHook | PostToolUseHook): hook is PreToolUseHook {
-    return "handler" in hook;
-  }
-}
-
-// ── Singleton ─────────────────────────────────────────────────────────
+  // ── Singleton ─────────────────────────────────────────────────────────
 
 export const hooks = new HookRegistry();
 

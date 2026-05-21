@@ -20,6 +20,7 @@
  */
 
 import * as fs from "node:fs";
+import { homedir } from "node:os";
 import * as path from "node:path";
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -32,7 +33,7 @@ interface Memory {
   updatedAt: number;
 }
 
-const MEMORY_FILE = path.join(process.env.HOME || "~", ".pi", "agent", "memories.json");
+const MEMORY_FILE = path.join(homedir(), ".pi", "agent", "memories.json");
 
 const MemoryParams = Type.Object({
   action: Type.String({ description: "Action: save, recall, list, remove, clear" }),

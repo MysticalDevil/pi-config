@@ -97,11 +97,10 @@ function toggleExtension(
     { path: join(getAgentDir(), "extensions"), source: "global" as const },
   ];
 
-  if (preferSource) {
-    dirs.sort((a, b) => (a.source === preferSource ? -1 : b.source === preferSource ? 1 : 0));
-  }
+  // Default to project-first; reverse if global is preferred
+  const ordered = preferSource === "global" ? [...dirs].reverse() : dirs;
 
-  for (const { path } of dirs) {
+  for (const { path } of ordered) {
     // Try file extension
     const tsFile = join(path, `${name}.ts`);
     const disabledFile = join(path, `${name}.ts.disabled`);

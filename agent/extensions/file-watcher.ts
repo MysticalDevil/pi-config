@@ -14,16 +14,16 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const POLL_INTERVAL = 3000;
 
-function parseStatusLine(line: string): { status: string; filepath: string } | null {
+export function parseStatusLine(line: string): { status: string; file: string } | null {
   if (line.length < 4) return null;
   const status = line.slice(0, 2);
-  let filepath = line.slice(3).trim();
-  if (!filepath) return null;
-  const renameArrow = filepath.indexOf(" -> ");
+  let file = line.slice(3).trim();
+  if (!file) return null;
+  const renameArrow = file.indexOf(" -> ");
   if (renameArrow >= 0) {
-    filepath = filepath.slice(renameArrow + 4).trim();
+    file = file.slice(renameArrow + 4).trim();
   }
-  return { status, filepath };
+  return { status, file };
 }
 
 function makeBaseline(cwd: string): Map<string, string | null> {
@@ -35,24 +35,24 @@ function makeBaseline(cwd: string): Map<string, string | null> {
 
       const parsed = parseStatusLine(line);
       if (!parsed) continue;
-      if (parsed.filepath.startsWith("agent/sessions/")) continue;
+      if (parsed.file.startsWith("agent/sessions/")) continue;
 
       const isDeleted = parsed.status.includes("D") && !parsed.status.includes("?");
-      const fullPath = join(cwd, parsed.filepath);
+      const fullPath = join(cwd, parsed.file);
 
       if (isDeleted || !existsSync(fullPath)) {
-        map.set(parsed.filepath, null);
+        map.set(parsed.file, null);
         continue;
       }
 
       try {
-        const hash = execFileSync("git", ["hash-object", "--", parsed.filepath], {
+        const hash = execFileSync("git", ["hash-object", "--", parsed.file], {
           cwd,
           encoding: "utf-8",
         }).trim();
-        map.set(parsed.filepath, hash);
+        map.set(parsed.file, hash);
       } catch {
-        map.set(parsed.filepath, null);
+        map.set(parsed.file, null);
       }
     }
   } catch {

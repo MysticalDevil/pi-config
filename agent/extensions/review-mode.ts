@@ -25,6 +25,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Key } from "@earendil-works/pi-tui";
+import { parseStatusLine } from "./file-watcher.js";
 
 interface FileChange {
   file: string;
@@ -59,18 +60,6 @@ export default function (pi: ExtensionAPI) {
       acceptedFiles: Array.from(state.acceptedFiles),
       rejectedFiles: Array.from(state.rejectedFiles),
     });
-  }
-
-  function parseStatusLine(line: string): { status: string; file: string } | null {
-    if (line.length < 4) return null;
-    const status = line.slice(0, 2);
-    let file = line.slice(3).trim();
-    if (!file) return null;
-    const renameArrow = file.indexOf(" -> ");
-    if (renameArrow >= 0) {
-      file = file.slice(renameArrow + 4).trim();
-    }
-    return { status, file };
   }
 
   async function getFileStats(
@@ -377,9 +366,13 @@ export default function (pi: ExtensionAPI) {
           state.acceptedFiles.add(change.file);
           state.rejectedFiles.delete(change.file);
         } else if (decision === "reject") {
+          const confirmed = await ctx.ui.confirm(
+            "Reject changes?",
+            `This will revert all changes to ${change.file}. This cannot be undone.`,
+          );
+          if (!confirmed) continue;
           state.rejectedFiles.add(change.file);
           state.acceptedFiles.delete(change.file);
-          // Revert the file
           await pi.exec("git", ["checkout", "--", change.file], {
             cwd: ctx.cwd,
           });
