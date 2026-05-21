@@ -1,0 +1,25 @@
+{
+  "$schema": "https://raw.githubusercontent.com/oxc-project/oxc-oxlint/main/npm/oxlint/configuration_schema.json",
+  "categories": {
+    "correctness": "error",
+    "suspicious": "warn"
+  },
+  "rules": {
+    // Allow _ prefix for intentional unused params (convention throughout pi extensions)
+    "no-underscore-dangle": "off",
+
+    // Project targets ES2022; toReversed/toSorted are ES2023
+    "unicorn/no-array-reverse": "off",
+    "unicorn/no-array-sort": "off",
+
+    // Inner functions are intentionally scoped to their parent for readability
+    "unicorn/consistent-function-scoping": "off"
+  },
+  "ignorePatterns": [
+    "agent/npm",
+    "agent/sessions",
+    "agent/themes",
+    "agent/skills",
+    "node_modules"
+  ]
+}
