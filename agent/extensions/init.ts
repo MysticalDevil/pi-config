@@ -422,7 +422,7 @@ export default function (pi: ExtensionAPI) {
     handler: async (args, ctx) => {
       const tokens = args.trim().split(/\s+/);
       const force = tokens.includes("--force");
-      const preview = tokens.includes("--preview");
+      let preview = tokens.includes("--preview");
       const agentsPath = path.join(ctx.cwd, "AGENTS.md");
 
       // Check if already exists
@@ -434,7 +434,7 @@ export default function (pi: ExtensionAPI) {
         ]);
         if (choice === "Cancel") return;
         if (choice === "Preview only") {
-          void (preview as unknown as boolean);
+          preview = true;
         }
       }
 
