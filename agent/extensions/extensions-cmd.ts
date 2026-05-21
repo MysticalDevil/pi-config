@@ -16,174 +16,201 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
 
 interface ExtInfo {
-	name: string;
-	enabled: boolean;
-	source: "global" | "project";
+  name: string;
+  enabled: boolean;
+  source: "global" | "project";
 }
 
 function scanExtensions(cwd: string): ExtInfo[] {
-	const dirs = [
-		{ path: join(getAgentDir(), "extensions"), source: "global" as const },
-		{ path: join(cwd, ".pi", "extensions"), source: "project" as const },
-	];
+  const dirs = [
+    { path: join(cwd, ".pi", "extensions"), source: "project" as const },
+    { path: join(getAgentDir(), "extensions"), source: "global" as const },
+  ];
 
-	const result: ExtInfo[] = [];
+  const result = new Map<string, ExtInfo>();
 
-	for (const { path, source } of dirs) {
-		if (!existsSync(path)) continue;
+  function record(ext: ExtInfo): void {
+    const existing = result.get(ext.name);
+    if (!existing || (existing.source === "global" && ext.source === "project")) {
+      result.set(ext.name, ext);
+    }
+  }
 
-		let entries: string[];
-		try {
-			entries = readdirSync(path);
-		} catch {
-			continue;
-		}
+  for (const { path, source } of dirs) {
+    if (!existsSync(path)) continue;
 
-		for (const entry of entries) {
-			// Handle directory extensions (e.g. sandbox/index.ts)
-			let entryStat: ReturnType<typeof statSync> | undefined;
-			try {
-				entryStat = statSync(join(path, entry));
-			} catch {
-				continue;
-			}
+    let entries: string[];
+    try {
+      entries = readdirSync(path);
+    } catch {
+      continue;
+    }
 
-			if (entryStat.isDirectory()) {
-				const indexFile = join(path, entry, "index.ts");
-				const disabledFile = join(path, entry, "index.ts.disabled");
-				if (existsSync(indexFile)) {
-					result.push({ name: entry, enabled: true, source });
-				} else if (existsSync(disabledFile)) {
-					result.push({ name: entry, enabled: false, source });
-				}
-				continue;
-			}
+    for (const entry of entries) {
+      // Handle directory extensions (e.g. sandbox/index.ts)
+      let entryStat: ReturnType<typeof statSync> | undefined;
+      try {
+        entryStat = statSync(join(path, entry));
+      } catch {
+        continue;
+      }
 
-			// Handle file extensions
-			if (entry.endsWith(".ts")) {
-				result.push({
-					name: entry.replace(/\.ts$/, ""),
-					enabled: true,
-					source,
-				});
-			} else if (entry.endsWith(".ts.disabled")) {
-				result.push({
-					name: entry.replace(/\.ts\.disabled$/, ""),
-					enabled: false,
-					source,
-				});
-			}
-		}
-	}
+      if (entryStat.isDirectory()) {
+        const indexFile = join(path, entry, "index.ts");
+        const disabledFile = join(path, entry, "index.ts.disabled");
+        if (existsSync(indexFile)) {
+          record({ name: entry, enabled: true, source });
+        } else if (existsSync(disabledFile)) {
+          record({ name: entry, enabled: false, source });
+        }
+        continue;
+      }
 
-	return result;
+      // Handle file extensions
+      if (entry.endsWith(".ts")) {
+        record({
+          name: entry.replace(/\.ts$/, ""),
+          enabled: true,
+          source,
+        });
+      } else if (entry.endsWith(".ts.disabled")) {
+        record({
+          name: entry.replace(/\.ts\.disabled$/, ""),
+          enabled: false,
+          source,
+        });
+      }
+    }
+  }
+
+  return Array.from(result.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function toggleExtension(
-	cwd: string,
-	name: string,
-	enable: boolean,
+  cwd: string,
+  name: string,
+  enable: boolean,
+  preferSource?: "global" | "project",
 ): string | null {
-	const dirs = [
-		{ path: join(getAgentDir(), "extensions"), source: "global" },
-		{ path: join(cwd, ".pi", "extensions"), source: "project" },
-	];
+  const dirs = [
+    { path: join(cwd, ".pi", "extensions"), source: "project" as const },
+    { path: join(getAgentDir(), "extensions"), source: "global" as const },
+  ];
 
-	for (const { path } of dirs) {
-		// Try file extension
-		const tsFile = join(path, `${name}.ts`);
-		const disabledFile = join(path, `${name}.ts.disabled`);
+  if (preferSource) {
+    dirs.sort((a, b) => (a.source === preferSource ? -1 : b.source === preferSource ? 1 : 0));
+  }
 
-		if (existsSync(tsFile) && !enable) {
-			renameSync(tsFile, disabledFile);
-			return "disabled";
-		}
-		if (existsSync(disabledFile) && enable) {
-			renameSync(disabledFile, tsFile);
-			return "enabled";
-		}
+  for (const { path } of dirs) {
+    // Try file extension
+    const tsFile = join(path, `${name}.ts`);
+    const disabledFile = join(path, `${name}.ts.disabled`);
 
-		// Try directory extension
-		const dirPath = join(path, name);
-		if (statSync(dirPath, { throwIfNoEntry: false })?.isDirectory()) {
-			const indexFile = join(dirPath, "index.ts");
-			const disabledIndex = join(dirPath, "index.ts.disabled");
+    if (existsSync(tsFile) && !enable) {
+      renameSync(tsFile, disabledFile);
+      return "disabled";
+    }
+    if (existsSync(disabledFile) && enable) {
+      renameSync(disabledFile, tsFile);
+      return "enabled";
+    }
 
-			if (existsSync(indexFile) && !enable) {
-				renameSync(indexFile, disabledIndex);
-				return "disabled";
-			}
-			if (existsSync(disabledIndex) && enable) {
-				renameSync(disabledIndex, indexFile);
-				return "enabled";
-			}
-		}
-	}
+    // Try directory extension
+    const dirPath = join(path, name);
+    if (statSync(dirPath, { throwIfNoEntry: false })?.isDirectory()) {
+      const indexFile = join(dirPath, "index.ts");
+      const disabledIndex = join(dirPath, "index.ts.disabled");
 
-	return null;
+      if (existsSync(indexFile) && !enable) {
+        renameSync(indexFile, disabledIndex);
+        return "disabled";
+      }
+      if (existsSync(disabledIndex) && enable) {
+        renameSync(disabledIndex, indexFile);
+        return "enabled";
+      }
+    }
+  }
+
+  return null;
 }
 
 export default function (pi: ExtensionAPI) {
-	pi.registerCommand("extensions", {
-		description:
-			"List, enable, or disable extensions (usage: /extensions [enable|disable] <name>)",
-		handler: async (args, ctx) => {
-			const tokens = (args || "").trim().split(/\s+/).filter(Boolean);
+  pi.registerCommand("extensions", {
+    description:
+      "List, enable, or disable extensions (usage: /extensions [enable|disable] <name>[@source])",
+    handler: async (args, ctx) => {
+      const tokens = (args || "").trim().split(/\s+/).filter(Boolean);
 
-			// List mode
-			if (tokens.length === 0) {
-				const exts = scanExtensions(ctx.cwd);
-				if (exts.length === 0) {
-					ctx.ui.notify("No extensions found", "info");
-					return;
-				}
+      // List mode
+      if (tokens.length === 0) {
+        const exts = scanExtensions(ctx.cwd);
+        if (exts.length === 0) {
+          ctx.ui.notify("No extensions found", "info");
+          return;
+        }
 
-				const lines = exts.map((e) => {
-					const icon = e.enabled ? "✅" : "❌";
-					const src = e.source === "project" ? " (project)" : "";
-					return `${icon} ${e.name}${src}`;
-				});
+        const lines = exts.map((e) => {
+          const icon = e.enabled ? "✅" : "❌";
+          const src = e.source === "project" ? " (project)" : "";
+          return `${icon} ${e.name}${src}`;
+        });
 
-				ctx.ui.notify(
-					`Extensions (${exts.length}):\n${lines.join("\n")}\n\nUse /extensions disable <name> or enable <name>`,
-					"info",
-				);
-				return;
-			}
+        ctx.ui.notify(
+          `Extensions (${exts.length}):\n${lines.join("\n")}\n\nUse /extensions disable <name> or enable <name>`,
+          "info",
+        );
+        return;
+      }
 
-			// Toggle mode
-			const action = tokens[0].toLowerCase();
-			const name = tokens[1];
+      // Toggle mode
+      const action = tokens[0].toLowerCase();
+      const rawName = tokens[1];
 
-			if (!name) {
-				ctx.ui.notify(
-					"Usage: /extensions enable <name> | /extensions disable <name>",
-					"error",
-				);
-				return;
-			}
+      if (!rawName) {
+        ctx.ui.notify(
+          "Usage: /extensions enable <name>[@source] | /extensions disable <name>[@source]",
+          "error",
+        );
+        return;
+      }
 
-			if (action !== "enable" && action !== "disable") {
-				ctx.ui.notify(
-					`Unknown action: ${action}. Use enable or disable.`,
-					"error",
-				);
-				return;
-			}
+      if (action !== "enable" && action !== "disable") {
+        ctx.ui.notify(`Unknown action: ${action}. Use enable or disable.`, "error");
+        return;
+      }
 
-			const result = toggleExtension(ctx.cwd, name, action === "enable");
+      const match = rawName.match(/^(.+?)@(project|global)$/);
+      const name = match ? match[1] : rawName;
 
-			if (!result) {
-				ctx.ui.notify(
-					`Extension "${name}" not found or already ${action}d`,
-					"warning",
-				);
-				return;
-			}
+      const exts = scanExtensions(ctx.cwd);
+      const matching = exts.filter((e) => e.name === name);
 
-			ctx.ui.notify(`Extension "${name}" ${result}. Reloading...`, "info");
-			await ctx.reload();
-			return;
-		},
-	});
+      if (matching.length > 1 && !match) {
+        const lines = matching.map((e) => `  ${e.enabled ? "✅" : "❌"} ${e.name} (${e.source})`);
+        ctx.ui.notify(
+          `Multiple extensions named "${name}":\n${lines.join("\n")}\nUse /extensions ${action} ${name}@project or ${name}@global`,
+          "warning",
+        );
+        return;
+      }
+
+      const preferSource =
+        match?.[2] === "project"
+          ? ("project" as const)
+          : match?.[2] === "global"
+            ? ("global" as const)
+            : matching[0]?.source;
+      const result = toggleExtension(ctx.cwd, name, action === "enable", preferSource);
+
+      if (!result) {
+        ctx.ui.notify(`Extension "${name}" not found or already ${action}d`, "warning");
+        return;
+      }
+
+      ctx.ui.notify(`Extension "${name}" ${result}. Reloading...`, "info");
+      await ctx.reload();
+      return;
+    },
+  });
 }
