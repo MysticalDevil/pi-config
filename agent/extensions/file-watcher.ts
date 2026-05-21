@@ -35,7 +35,9 @@ function makeBaseline(cwd: string): Map<string, string | null> {
 
       const parsed = parseStatusLine(line);
       if (!parsed) continue;
-      if (parsed.file.startsWith("agent/sessions/")) continue;
+
+      // git status --porcelain=v1 reports untracked dirs as "?? dirname/"
+      if (parsed.file.endsWith("/")) continue;
 
       const isDeleted = parsed.status.includes("D") && !parsed.status.includes("?");
       const fullPath = join(cwd, parsed.file);
@@ -44,9 +46,6 @@ function makeBaseline(cwd: string): Map<string, string | null> {
         map.set(parsed.file, null);
         continue;
       }
-
-      // git status --porcelain=v1 reports untracked dirs as "?? dirname/"
-      if (parsed.file.endsWith("/")) continue;
 
       try {
         const hash = execFileSync("git", ["hash-object", "--", parsed.file], {
