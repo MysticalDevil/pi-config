@@ -70,12 +70,12 @@ export class BtwOverlayController {
   setAnswer(text: string): void {
     this.mode = "answer";
     this.answer = text
-      // Strip DSML blocks: <| DSML | bash ... content ... <| ... >
-      .replace(/^<\|\s*\S+\s*\|\s*bash\n[\s\S]*?(?=<\||$)/g, "")
-      // Strip DSML tag lines: <| DSML | tool_calls>
-      .replace(/^<\|\s*\S+\s*\|\s*[^\n]*$/gm, "")
-      // Strip inline DSML tags: <| DSML | reasoning>
-      .replace(/<\|\s*\S+\s*\|\s*[^>]*>/g, "")
+      // Strip <| DSML | bash ...content... until next <| or end
+      .replace(/^<\| \s*\S+\s*\|\s*bash\n[\s\S]*?(?=<\| |$)/gm, "")
+      // Strip standalone <| ... | ...> tags on their own lines
+      .replace(/^<\| \s*\S+\s*\|\s*\S+>\s*$/gm, "")
+      // Strip inline <| ... | ...> tags
+      .replace(/<\| \s*\S+\s*\|\s*\S+>/g, "")
       .replace(/\n{3,}/g, "\n\n")
       .trim();
     this.tui.requestRender();
