@@ -193,8 +193,9 @@ class HookRegistry {
 
     return contexts;
   }
+}
 
-  // ── Singleton ─────────────────────────────────────────────────────────
+// ── Singleton ─────────────────────────────────────────────────────────
 
 export const hooks = new HookRegistry();
 

@@ -351,10 +351,6 @@ async function runSingleAgent(
         }
         if (typeof raw !== "object" || raw === null) return;
         const event = raw as Record<string, unknown>;
-        } catch (e) {
-          if (e instanceof SyntaxError) return;
-          throw e;
-        }
 
         if (event.type === "message_end" && event.message) {
           const msg = event.message as Message;
