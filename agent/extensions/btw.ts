@@ -219,7 +219,8 @@ class BtwOverlay {
 
     // Banner
     const qTrunc = truncateToWidth(`/btw ${this.question}`, width - pad.length, "…");
-    const banner = th.bg("accent", th.fg("textOnAccent", pad + qTrunc + " ".repeat(Math.max(0, width - visibleLen(pad + qTrunc)))));
+    const padded = pad + qTrunc + " ".repeat(Math.max(0, width - visibleLen(pad + qTrunc)));
+    const banner = th.bg("customMessageBg", th.fg("customMessageText", padded));
 
     // History
     const histLines = this.history.map((h) =>
