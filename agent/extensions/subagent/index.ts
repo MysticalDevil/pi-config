@@ -68,7 +68,7 @@ function formatUsageStats(
 function formatToolCall(
   toolName: string,
   args: Record<string, unknown>,
-  themeFg: (color: any, text: string) => string,
+  themeFg: (color: string, text: string) => string,
 ): string {
   const shortenPath = (p: string) => {
     const home = os.homedir();
@@ -342,9 +342,15 @@ async function runSingleAgent(
 
       const processLine = (line: string) => {
         if (!line.trim()) return;
-        let event: any;
+        let raw: unknown;
         try {
-          event = JSON.parse(line);
+          raw = JSON.parse(line);
+        } catch (e) {
+          if (e instanceof SyntaxError) return;
+          throw e;
+        }
+        if (typeof raw !== "object" || raw === null) return;
+        const event = raw as Record<string, unknown>;
         } catch (e) {
           if (e instanceof SyntaxError) return;
           throw e;

@@ -12,6 +12,7 @@
  */
 
 import * as fs from "node:fs";
+import { homedir } from "node:os";
 import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
@@ -19,6 +20,12 @@ interface ThemeMeta {
   file: string;
   name: string;
   isDark: boolean;
+}
+
+interface ThemeData {
+  name?: string;
+  colors?: Record<string, string | number | undefined>;
+  vars?: Record<string, string>;
 }
 
 function getThemeNames(cwd: string): ThemeMeta[] {
@@ -29,12 +36,12 @@ function getThemeNames(cwd: string): ThemeMeta[] {
   themes.push({ file: "light", name: "Light (built-in)", isDark: false });
 
   // Global themes
-  const globalDir = path.join(process.env.HOME || "~", ".pi", "agent", "themes");
+  const globalDir = path.join(homedir(), ".pi", "agent", "themes");
   if (fs.existsSync(globalDir)) {
     for (const entry of fs.readdirSync(globalDir)) {
       if (entry.endsWith(".json")) {
         try {
-          const content = JSON.parse(fs.readFileSync(path.join(globalDir, entry), "utf-8"));
+          const content = JSON.parse(fs.readFileSync(path.join(globalDir, entry), "utf-8")) as ThemeData;
           if (content.name) {
             const bg = content.colors?.toolPendingBg || content.vars?.bg || "";
             const isDark = isDarkColor(bg);
@@ -53,7 +60,7 @@ function getThemeNames(cwd: string): ThemeMeta[] {
     for (const entry of fs.readdirSync(projectDir)) {
       if (entry.endsWith(".json")) {
         try {
-          const content = JSON.parse(fs.readFileSync(path.join(projectDir, entry), "utf-8"));
+          const content = JSON.parse(fs.readFileSync(path.join(projectDir, entry), "utf-8")) as ThemeData;
           if (content.name) {
             const name = content.name + " (project)";
             themes.push({ file: entry.replace(".json", ""), name, isDark: false });
@@ -74,6 +81,7 @@ function isDarkColor(hex: string): boolean {
   const r = parseInt(hex.slice(0, 2), 16);
   const g = parseInt(hex.slice(2, 4), 16);
   const b = parseInt(hex.slice(4, 6), 16);
+  if (isNaN(r) || isNaN(g) || isNaN(b)) return true; // fallback: assume dark
   // Perceived brightness
   const brightness = (r * 299 + g * 587 + b * 114) / 1000;
   return brightness < 128;
@@ -82,17 +90,17 @@ function isDarkColor(hex: string): boolean {
 function getSwatchColors(themeFile: string): Record<string, string> | null {
   // Try global first
   const globalPath = path.join(
-    process.env.HOME || "~",
+    homedir(),
     ".pi",
     "agent",
     "themes",
     `${themeFile}.json`,
   );
-  let themeData: any = null;
+  let themeData: ThemeData | null = null;
 
   if (fs.existsSync(globalPath)) {
     try {
-      themeData = JSON.parse(fs.readFileSync(globalPath, "utf-8"));
+      themeData = JSON.parse(fs.readFileSync(globalPath, "utf-8")) as ThemeData;
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
       throw e;
@@ -127,8 +135,8 @@ function colorValue(
 
 function readCurrentTheme(settingsPath: string): string {
   try {
-    const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
-    return settings.theme || "dark";
+    const settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as Record<string, unknown>;
+    return typeof settings.theme === "string" ? settings.theme : "dark";
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return "dark";
     throw e;
@@ -136,10 +144,10 @@ function readCurrentTheme(settingsPath: string): string {
 }
 
 function writeTheme(settingsPath: string, theme: string): void {
-  let settings: any = {};
+  let settings: Record<string, unknown> = {};
   try {
     if (fs.existsSync(settingsPath)) {
-      settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8"));
+      settings = JSON.parse(fs.readFileSync(settingsPath, "utf-8")) as Record<string, unknown>;
     }
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
@@ -155,7 +163,7 @@ export default function (pi: ExtensionAPI) {
     handler: async (args, ctx) => {
       const tokens = args.trim().split(/\s+/);
       const subcommand = tokens[0] || "";
-      const settingsPath = path.join(process.env.HOME || "~", ".pi", "agent", "settings.json");
+      const settingsPath = path.join(homedir(), ".pi", "agent", "settings.json");
       const themes = getThemeNames(ctx.cwd);
       const currentTheme = readCurrentTheme(settingsPath);
 
