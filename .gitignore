@@ -20,3 +20,4 @@ skills/
 # ── Logs ──
 *.log
 agent/settings.json
+agent/models.json
