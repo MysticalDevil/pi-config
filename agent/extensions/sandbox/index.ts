@@ -268,7 +268,7 @@ function createSandboxedBashOps(config: SandboxConfig): BashOperations {
 
       const bwrapArgs = buildBwrapArgs(command, cwd, config);
 
-      return new Promise((resolve, reject) => {
+      return new Promise((_resolve, reject) => {
         const child = spawn("bwrap", bwrapArgs, {
           cwd,
           detached: true,
@@ -326,7 +326,7 @@ function createSandboxedBashOps(config: SandboxConfig): BashOperations {
           } else if (timedOut) {
             reject(new Error(`timeout:${timeout}`));
           } else {
-            resolve({ exitCode: code });
+            _resolve({ exitCode: code });
           }
         });
       });

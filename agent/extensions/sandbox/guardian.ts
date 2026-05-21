@@ -147,10 +147,10 @@ export async function guardianReview(
         if (parsed) {
           const d = parsed.decision?.toLowerCase();
           if (d === "allow" || d === "deny" || d === "prompt") {
-            const decision: Decision = d === "deny" ? "forbidden" : (d as Decision);
+            const finalDecision: Decision = d === "deny" ? "forbidden" : (d as Decision);
             finish({
-              decision,
-              reason: parsed.reason ?? `Guardian: ${decision}`,
+              decision: finalDecision,
+              reason: parsed.reason ?? `Guardian: ${finalDecision}`,
             });
             return;
           }
