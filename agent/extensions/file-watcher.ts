@@ -45,6 +45,9 @@ function makeBaseline(cwd: string): Map<string, string | null> {
         continue;
       }
 
+      // git status --porcelain=v1 reports untracked dirs as "?? dirname/"
+      if (parsed.file.endsWith("/")) continue;
+
       try {
         const hash = execFileSync("git", ["hash-object", "--", parsed.file], {
           cwd,
