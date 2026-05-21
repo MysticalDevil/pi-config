@@ -26,8 +26,8 @@ function parseStatusLine(line: string): { status: string; filepath: string } | n
   return { status, filepath };
 }
 
-function makeBaseline(cwd: string): Map<string, string> {
-  const map = new Map<string, string>();
+function makeBaseline(cwd: string): Map<string, string | null> {
+  const map = new Map<string, string | null>();
   try {
     const out = execSync("git status --porcelain=v1", { cwd, encoding: "utf-8" });
     for (const line of out.trim().split("\n")) {
@@ -35,11 +35,15 @@ function makeBaseline(cwd: string): Map<string, string> {
 
       const parsed = parseStatusLine(line);
       if (!parsed) continue;
-      if (parsed.status.includes("D")) continue;
       if (parsed.filepath.startsWith("agent/sessions/")) continue;
 
+      const isDeleted = parsed.status.includes("D") && !parsed.status.includes("?");
       const fullPath = join(cwd, parsed.filepath);
-      if (!existsSync(fullPath)) continue;
+
+      if (isDeleted || !existsSync(fullPath)) {
+        map.set(parsed.filepath, null);
+        continue;
+      }
 
       try {
         const hash = execFileSync("git", ["hash-object", "--", parsed.filepath], {
@@ -48,7 +52,7 @@ function makeBaseline(cwd: string): Map<string, string> {
         }).trim();
         map.set(parsed.filepath, hash);
       } catch {
-        continue;
+        map.set(parsed.filepath, null);
       }
     }
   } catch {
@@ -57,24 +61,32 @@ function makeBaseline(cwd: string): Map<string, string> {
   return map;
 }
 
-function diffGit(before: Map<string, string>, after: Map<string, string>): string[] {
+function diffGit(before: Map<string, string | null>, after: Map<string, string | null>): string[] {
   const changes: string[] = [];
   for (const [path, hash] of after) {
-    if (!before.has(path)) {
+    const beforeHash = before.get(path);
+    if (beforeHash === undefined) {
+      if (hash === null) continue;
       changes.push(`+ ${path}`);
-    } else if (before.get(path) !== hash) {
+    } else if (beforeHash === null) {
+      if (hash !== null) changes.push(`~ ${path}`);
+    } else if (hash === null) {
+      changes.push(`- ${path}`);
+    } else if (beforeHash !== hash) {
       changes.push(`~ ${path}`);
     }
   }
-  for (const path of before.keys()) {
-    if (!after.has(path)) changes.push(`- ${path}`);
+  for (const [path, hash] of before) {
+    if (!after.has(path)) {
+      if (hash !== null) changes.push(`- ${path}`);
+    }
   }
   return changes;
 }
 
 export default function (pi: ExtensionAPI) {
   let cwd = "";
-  let baseline = new Map<string, string>();
+  let baseline = new Map<string, string | null>();
   let timer: ReturnType<typeof setInterval> | null = null;
 
   // Global guard: prevent duplicate watchers across reloads
@@ -85,7 +97,6 @@ export default function (pi: ExtensionAPI) {
   function poll() {
     if (!cwd) return;
     const current = makeBaseline(cwd);
-    if (current.size === 0) return;
     if (baseline.size === 0) {
       baseline = current;
       return;

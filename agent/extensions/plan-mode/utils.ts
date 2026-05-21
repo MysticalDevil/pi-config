@@ -99,9 +99,11 @@ const SAFE_PATTERNS = [
 ];
 
 export function isSafeCommand(command: string): boolean {
-  // Split on && and ; then check each subcommand
+  if (/\$\(|`/.test(command)) return false;
+  if (/\|\|/.test(command)) return false;
+
   const subcommands = command
-    .split(/&&|;/)
+    .split(/&&|;|\|/)
     .map((s) => s.trim())
     .filter(Boolean);
   for (const sub of subcommands) {

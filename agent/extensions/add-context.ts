@@ -71,12 +71,119 @@ function shouldIgnore(filePath: string): boolean {
   return false;
 }
 
+function splitArgs(args: string): string[] {
+  return (args || "").trim().split(/\s+/).filter(Boolean);
+}
+
+function toRelativePath(cwd: string, filePath: string): string {
+  return path.relative(cwd, filePath).split(path.sep).join("/");
+}
+
+function hasGlobChars(targetPath: string): boolean {
+  return /[*?[{}()]/.test(targetPath);
+}
+
+function globToRegExp(pattern: string): RegExp {
+  const normalized = pattern.replace(/\\/g, "/");
+  let regex = "^";
+
+  for (let i = 0; i < normalized.length; i++) {
+    const ch = normalized[i];
+
+    if (ch === "*") {
+      if (normalized[i + 1] === "*") {
+        if (normalized[i + 2] === "/") {
+          regex += "(?:.*\\/)?";
+          i += 2;
+        } else {
+          regex += ".*";
+          i += 1;
+        }
+      } else {
+        regex += "[^/]*";
+      }
+      continue;
+    }
+
+    if (ch === "?") {
+      regex += "[^/]";
+      continue;
+    }
+
+    if (".+^$|[]{}".includes(ch)) {
+      regex += `\\${ch}`;
+      continue;
+    }
+
+    regex += ch;
+  }
+
+  regex += "$";
+  return new RegExp(regex);
+}
+
+function collectGlobFiles(
+  cwd: string,
+  dir: string,
+  matcher: RegExp,
+  files: Map<string, true>,
+): void {
+  let entries: string[] = [];
+  try {
+    entries = fs.readdirSync(dir);
+  } catch (e) {
+    if (
+      (e as NodeJS.ErrnoException).code === "ENOENT" ||
+      (e as NodeJS.ErrnoException).code === "EACCES"
+    ) {
+      return;
+    }
+    throw e;
+  }
+
+  for (const entry of entries) {
+    const fullPath = path.join(dir, entry);
+    if (shouldIgnore(fullPath)) continue;
+
+    let stat: fs.Stats;
+    try {
+      stat = fs.statSync(fullPath);
+    } catch (e) {
+      if (
+        (e as NodeJS.ErrnoException).code === "ENOENT" ||
+        (e as NodeJS.ErrnoException).code === "EACCES"
+      ) {
+        continue;
+      }
+      throw e;
+    }
+
+    if (stat.isFile()) {
+      const relPath = toRelativePath(cwd, fullPath);
+      if (matcher.test(relPath)) {
+        files.set(fullPath, true);
+      }
+      continue;
+    }
+
+    if (stat.isDirectory()) {
+      collectGlobFiles(cwd, fullPath, matcher, files);
+    }
+  }
+}
+
 function collectFiles(
   cwd: string,
   targetPath: string,
   depth: number,
   files: Map<string, true>,
 ): void {
+  if (hasGlobChars(targetPath)) {
+    const matcher = globToRegExp(targetPath);
+    collectGlobFiles(cwd, cwd, matcher, files);
+    return;
+  }
+
   const fullPath = path.resolve(cwd, targetPath);
 
   if (!fs.existsSync(fullPath)) return;
@@ -254,7 +361,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("add-dir", {
     description: "Add directory or glob to session context (usage: /add-dir <path> [--depth N])",
     handler: async (args, ctx) => {
-      const tokens = args.trim().split(/\s+/);
+      const tokens = splitArgs(args);
       if (tokens.length === 0) {
         ctx.ui.notify("Usage: /add-dir <path> [--depth N]", "error");
         return;
@@ -304,7 +411,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("add-context", {
     description: "Add specific file(s) to session context (usage: /add-context <file> [file2 ...])",
     handler: async (args, ctx) => {
-      const paths = args.trim().split(/\s+/).filter(Boolean);
+      const paths = splitArgs(args);
       if (paths.length === 0) {
         ctx.ui.notify("Usage: /add-context <file> [file2 ...]", "error");
         return;
@@ -355,7 +462,7 @@ export default function (pi: ExtensionAPI) {
   pi.registerCommand("context", {
     description: "Show or manage dynamic context (usage: /context [--clear|--remove <path>])",
     handler: async (args, ctx) => {
-      const tokens = args.trim().split(/\s+/);
+      const tokens = splitArgs(args);
 
       if (tokens[0] === "--clear") {
         const count = contextEntries.length;

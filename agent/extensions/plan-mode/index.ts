@@ -20,7 +20,6 @@ import { extractTodoItems, isSafeCommand, markCompletedSteps, type TodoItem } fr
 
 // Tools
 const PLAN_MODE_TOOLS = ["read", "bash", "grep", "find", "ls", "questionnaire"];
-const NORMAL_MODE_TOOLS = ["read", "bash", "edit", "write"];
 
 // Type guard for assistant messages
 function isAssistantMessage(m: AgentMessage): m is AssistantMessage {
@@ -79,8 +78,10 @@ export default function planModeExtension(pi: ExtensionAPI): void {
   }
 
   function restoreActiveTools(): void {
-    pi.setActiveTools(previousActiveTools ?? NORMAL_MODE_TOOLS);
-    previousActiveTools = null;
+    if (previousActiveTools) {
+      pi.setActiveTools(previousActiveTools);
+      previousActiveTools = null;
+    }
   }
 
   function togglePlanMode(ctx: ExtensionContext): void {
