@@ -69,8 +69,15 @@ export class BtwOverlayController {
 
   setAnswer(text: string): void {
     this.mode = "answer";
-    // Strip DSML markup that reasoning models may emit
-    this.answer = text.replace(/<\|[^|]*\|[^>]*>/g, "");
+    this.answer = text
+      // Strip DSML blocks: <| DSML | bash ... content ... <| ... >
+      .replace(/^<\|\s*\S+\s*\|\s*bash\n[\s\S]*?(?=<\||$)/g, "")
+      // Strip DSML tag lines: <| DSML | tool_calls>
+      .replace(/^<\|\s*\S+\s*\|\s*[^\n]*$/gm, "")
+      // Strip inline DSML tags: <| DSML | reasoning>
+      .replace(/<\|\s*\S+\s*\|\s*[^>]*>/g, "")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim();
     this.tui.requestRender();
   }
 
