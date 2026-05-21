@@ -1,24 +1,34 @@
 /**
- * btw-ui — bottom-slot overlay for /btw side-agent answers.
+ * btw-ui.ts — bottom-slot overlay for /btw side-agent answers.
+ *
+ * Mirrors @juicesharp/rpiv-btw btw-ui.ts exactly, with the single addition of
+ * DSML stripping in the answer rendering path.
  *
  * Bottom-anchored overlay panel: banner, history, echo, answer body, footer.
- * Clips to 30 lines with ↑/↓ scroll. Supports pending (spinner), streaming
- * (cursor), answer, and error modes.
+ * Clips to terminal-height with ↑/↓ scroll. Supports answer and error modes.
  */
 
-import type { Theme, ExtensionCommandContext } from "@earendil-works/pi-coding-agent";
-import { Key, matchesKey, truncateToWidth, wrapTextWithAnsi, visibleWidth } from "@earendil-works/pi-tui";
-
-// ── Constants ─────────────────────────────────────────────────────────
+import type { ExtensionCommandContext, Theme } from "@earendil-works/pi-coding-agent";
+import {
+  Key,
+  matchesKey,
+  type TUI,
+  truncateToWidth,
+  visibleWidth,
+  wrapTextWithAnsi,
+} from "@earendil-works/pi-tui";
 
 const SIDE_PAD = "  ";
 const ANSWER_PAD = "    ";
 const BTW_LITERAL = "/btw";
-const MAX_ROWS = 30;
+const BTW_MAX_HEIGHT_RATIO = 0.85;
+const PENDING_GLYPH = "…";
+const FOOTER_SCROLL = "↑/↓ to scroll";
+const FOOTER_CLEAR = "x to clear history";
+const FOOTER_DISMISS = "Esc to dismiss";
+const FOOTER_SEP = " · ";
 
-// ── Types ─────────────────────────────────────────────────────────────
-
-export type OverlayMode = "pending" | "streaming" | "answer" | "error";
+type Mode = "pending" | "answer" | "error";
 
 export interface BtwHistoryEntry {
   question: string;
@@ -30,51 +40,44 @@ export interface ShowBtwOverlayParams {
   question: string;
   history: BtwHistoryEntry[];
   controller: AbortController;
-  onClear: () => void;
+  onClearHistory: () => void;
 }
 
-// ── Component ─────────────────────────────────────────────────────────
+export interface ShowBtwOverlayResult {
+  overlayPromise: Promise<void>;
+  controllerReady: Promise<BtwOverlayController>;
+}
 
-export class BtwOverlay {
-  private mode: OverlayMode = "pending";
+export class BtwOverlayController {
+  private mode: Mode = "pending";
   private answer = "";
   private error = "";
   private scrollOffset = 0;
   private history: BtwHistoryEntry[];
-  private question: string;
-  private theme: Theme;
-  private done: () => void;
-  private controller: AbortController;
-  private onClear: () => void;
 
   constructor(
-    question: string,
+    private readonly question: string,
     history: BtwHistoryEntry[],
-    theme: Theme,
-    done: () => void,
-    controller: AbortController,
-    onClear: () => void,
+    private readonly theme: Theme,
+    private readonly tui: TUI,
+    private readonly done: (result?: undefined) => void,
+    private readonly controller: AbortController,
+    private readonly onClearHistory: () => void,
   ) {
-    this.question = question;
     this.history = [...history];
-    this.theme = theme;
-    this.done = done;
-    this.controller = controller;
-    this.onClear = onClear;
   }
 
-  appendDelta(delta: string): void {
-    this.mode = "streaming";
-    this.answer += delta;
-  }
-
-  finalizeAnswer(): void {
+  setAnswer(text: string): void {
     this.mode = "answer";
+    // Strip DSML markup that reasoning models may emit
+    this.answer = text.replace(/<\|[^|]*\|[^>]*>/g, "");
+    this.tui.requestRender();
   }
 
-  setError(msg: string): void {
+  setError(message: string): void {
     this.mode = "error";
-    this.error = msg;
+    this.error = message;
+    this.tui.requestRender();
   }
 
   handleInput(data: string): void {
@@ -85,91 +88,117 @@ export class BtwOverlay {
     }
     if (matchesKey(data, Key.up)) {
       this.scrollOffset = Math.max(0, this.scrollOffset - 1);
+      this.tui.requestRender();
       return;
     }
     if (matchesKey(data, Key.down)) {
-      this.scrollOffset += 1;
+      this.scrollOffset = this.scrollOffset + 1;
+      this.tui.requestRender();
       return;
     }
     if (data === "x") {
       this.history = [];
-      this.onClear();
+      this.onClearHistory();
       this.scrollOffset = 0;
+      this.tui.requestRender();
       return;
     }
   }
 
   render(width: number): string[] {
-    const th = this.theme;
+    const banner = this.renderBanner(width);
+    const historyLines = this.history.map((h) => this.historyLine(h.question, width));
+    const echoLine = this.echoLine(this.question, width);
+    const answerLines = this.renderAnswer(width);
+    const footerAvail = Math.max(1, width - SIDE_PAD.length);
+    const footerParts: string[] = [];
+    if (this.mode !== "pending") footerParts.push(FOOTER_SCROLL);
+    if (this.history.length > 0) footerParts.push(FOOTER_CLEAR);
+    footerParts.push(FOOTER_DISMISS);
+    const footer =
+      SIDE_PAD + truncateToWidth(this.theme.fg("dim", footerParts.join(FOOTER_SEP)), footerAvail, "…", false);
 
-    // Banner
-    const qTrunc = truncateToWidth(BTW_LITERAL + " " + this.question, width - SIDE_PAD.length, "…");
-    const rawBanner = SIDE_PAD + qTrunc + " ".repeat(Math.max(0, width - visibleWidth(SIDE_PAD + qTrunc)));
-    const banner = th.bg("customMessageBg", th.fg("customMessageText", rawBanner));
+    const natural: string[] = [banner, "", ...historyLines, echoLine, "", ...answerLines, "", footer];
 
-    // History
-    const qAvail = Math.max(0, width - SIDE_PAD.length - 6);
-    const histLines = this.history.map((h) =>
-      `${SIDE_PAD}${th.fg("accent", BTW_LITERAL)} ${th.fg("muted", truncateToWidth(h.question.replace(/\s+/g, " "), qAvail, "…"))}`
-    );
-
-    // Echo
-    const echo = `${SIDE_PAD}${th.fg("accent", BTW_LITERAL)} ${th.fg("muted", truncateToWidth(this.question.replace(/\s+/g, " "), qAvail, "…"))}`;
-
-    // Answer body
-    const bodyW = Math.max(1, width - ANSWER_PAD.length);
-    const body = this.renderBody(th, bodyW);
-
-    // Footer
-    const parts: string[] = [];
-    if (this.mode === "answer") parts.push("↑↓ to scroll");
-    if (this.history.length > 0) parts.push("x to clear");
-    parts.push("Esc to dismiss");
-    const footer = SIDE_PAD + truncateToWidth(th.fg("dim", parts.join(" · ")), Math.max(1, width - SIDE_PAD.length), "…");
-
-    const lines = [banner, "", ...histLines, echo, "", ...body, "", footer];
-    if (lines.length <= MAX_ROWS) return lines;
-    const excess = lines.length - MAX_ROWS;
-    this.scrollOffset = Math.min(this.scrollOffset, excess);
-    return lines.slice(excess - this.scrollOffset, excess - this.scrollOffset + MAX_ROWS);
+    const termRows = (this.tui.terminal as { rows?: number }).rows ?? 24;
+    const maxRows = Math.max(4, Math.floor(termRows * BTW_MAX_HEIGHT_RATIO));
+    if (natural.length <= maxRows) return natural;
+    const excess = natural.length - maxRows;
+    if (this.scrollOffset > excess) this.scrollOffset = excess;
+    const start = excess - this.scrollOffset;
+    return natural.slice(start, start + maxRows);
   }
 
   invalidate(): void {}
 
-  private renderBody(th: Theme, bodyW: number): string[] {
-    const indent = (ls: string[]) => ls.map((l) => ANSWER_PAD + l);
+  private renderBanner(width: number): string {
+    const prefix = `${SIDE_PAD}${BTW_LITERAL} `;
+    const prefixWidth = visibleWidth(prefix);
+    const qAvail = Math.max(0, width - prefixWidth);
+    const qTrunc = truncateToWidth(this.question, qAvail, "…", false);
+    const raw = prefix + qTrunc;
+    const padded = raw + " ".repeat(Math.max(0, width - visibleWidth(raw)));
+    return this.theme.bg("customMessageBg", this.theme.fg("customMessageText", padded));
+  }
 
-    if (this.mode === "pending") return indent([th.fg("warning", "…")]);
+  private historyLine(question: string, width: number): string {
+    const qAvail = Math.max(0, width - SIDE_PAD.length);
+    const qClean = question.replace(/\s+/g, " ").trim();
+    const raw = `${BTW_LITERAL} ${qClean}`;
+    const trunc = truncateToWidth(raw, qAvail, "…", false);
+    return SIDE_PAD + this.theme.fg("muted", trunc);
+  }
+
+  private echoLine(question: string, width: number): string {
+    const bodyAvail = Math.max(1, width - SIDE_PAD.length);
+    const prefixWidth = visibleWidth(BTW_LITERAL) + 1;
+    const qAvail = Math.max(0, bodyAvail - prefixWidth);
+    const qClean = question.replace(/\s+/g, " ").trim();
+    const qTrunc = truncateToWidth(qClean, qAvail, "…", false);
+    return `${SIDE_PAD + this.theme.fg("accent", BTW_LITERAL)} ${this.theme.fg("muted", qTrunc)}`;
+  }
+
+  private renderAnswer(width: number): string[] {
+    const bodyWidth = Math.max(1, width - ANSWER_PAD.length);
+    const indent = (lines: string[]) => lines.map((l) => ANSWER_PAD + l);
+
+    if (this.mode === "pending") return indent([this.theme.fg("warning", PENDING_GLYPH)]);
     if (this.mode === "error") {
       const out: string[] = [];
       for (const ln of this.error.split("\n")) {
-        out.push(...wrapTextWithAnsi(th.fg("error", ln || " "), bodyW));
+        const src = ln.length === 0 ? " " : ln;
+        out.push(...wrapTextWithAnsi(this.theme.fg("error", src), bodyWidth));
       }
       return indent(out);
     }
-    const text = this.mode === "streaming" ? this.answer + th.fg("accent", "▌") : this.answer;
     const out: string[] = [];
-    for (const ln of text.split("\n")) {
-      out.push(...wrapTextWithAnsi(ln || " ", bodyW));
+    for (const ln of this.answer.split("\n")) {
+      const src = ln.length === 0 ? " " : ln;
+      out.push(...wrapTextWithAnsi(src, bodyWidth));
     }
     return indent(out);
   }
 }
 
-// ── Entry point ───────────────────────────────────────────────────────
-
-export function showBtwOverlay(params: ShowBtwOverlayParams): {
-  overlayPromise: Promise<void>;
-  overlay: Promise<BtwOverlay>;
-} {
-  let resolveOverlay!: (ov: BtwOverlay) => void;
-  const overlay = new Promise<BtwOverlay>((r) => { resolveOverlay = r; });
+export function showBtwOverlay(params: ShowBtwOverlayParams): ShowBtwOverlayResult {
+  let resolveReady!: (controller: BtwOverlayController) => void;
+  const controllerReady = new Promise<BtwOverlayController>((resolve) => {
+    resolveReady = resolve;
+  });
 
   const overlayPromise = params.ctx.ui.custom<void>(
-    (_tui: unknown, theme: Theme, _kb: unknown, done: () => void) => {
-      const ov = new BtwOverlay(params.question, params.history, theme, done, params.controller, params.onClear);
-      resolveOverlay(ov);
-      return ov;
+    (tui, theme, _kb, done) => {
+      const controller = new BtwOverlayController(
+        params.question,
+        params.history,
+        theme,
+        tui as TUI,
+        done,
+        params.controller,
+        params.onClearHistory,
+      );
+      resolveReady(controller);
+      return controller;
     },
     {
       overlay: true,
@@ -182,5 +211,5 @@ export function showBtwOverlay(params: ShowBtwOverlayParams): {
     },
   );
 
-  return { overlayPromise, overlay };
+  return { overlayPromise, controllerReady };
 }

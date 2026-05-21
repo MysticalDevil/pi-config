@@ -1,17 +1,22 @@
 /**
- * btw.ts — /btw side-agent core: conversation snapshot, history,
- * in-process model call via completeSimple with reasoning suppressed.
+ * btw.ts — /btw side-question slash command.
+ *
+ * Mirrors @juicesharp/rpiv-btw btw.ts exactly.
+ * Asks the same primary model a one-off side question using the cloned primary
+ * conversation as context. Answer rendered in a bottom-slot overlay (never
+ * enters main agent's messages). History persists per-session via globalThis.
+ *
+ * Fix over rpiv-btw: DSML stripping in btw-ui.ts setAnswer().
  */
 
-import { completeSimple, type Message, type UserMessage } from "@earendil-works/pi-ai";
+import { completeSimple, type AssistantMessage, type Message, type StopReason, type UserMessage } from "@earendil-works/pi-ai";
 import {
   convertToLlm,
   type ExtensionAPI,
-  type ExtensionCommandContext,
   type ExtensionContext,
   type SessionEntry,
 } from "@earendil-works/pi-coding-agent";
-import { type BtwHistoryEntry, type BtwOverlay, showBtwOverlay } from "./btw-ui.js";
+import { showBtwOverlay } from "./btw-ui.js";
 
 // ── System prompt ─────────────────────────────────────────────────────
 
@@ -26,102 +31,149 @@ const BTW_SYSTEM_PROMPT = [
   "5. Do NOT output DSML, XML, or tool-call markup.",
 ].join("\n");
 
-// ── Global state ──────────────────────────────────────────────────────
+// ── Types ─────────────────────────────────────────────────────────────
 
-const STORE_KEY = Symbol.for("pi-btw");
-
-interface BtwStore {
-  histories: Map<string, BtwHistoryEntry[]>;
-  snapshots: Map<string, Message[]>;
+export interface BtwTurn {
+  userMessage: UserMessage;
+  assistantMessage: AssistantMessage;
 }
 
-function store(): BtwStore {
-  const g = globalThis as unknown as Record<symbol, BtwStore | undefined>;
-  if (!g[STORE_KEY]) g[STORE_KEY] = { histories: new Map(), snapshots: new Map() };
-  return g[STORE_KEY]!;
+interface BtwState {
+  histories: Map<string, BtwTurn[]>;
+  snapshots: Map<string, { messages: Message[] }>;
 }
 
-function sessionKey(ctx: ExtensionContext): string {
+export interface BtwExecResult {
+  ok: boolean;
+  answer?: string;
+  userMessage?: UserMessage;
+  assistantMessage?: AssistantMessage;
+  error?: string;
+  stopReason?: StopReason;
+  aborted?: boolean;
+}
+
+// ── Storage ───────────────────────────────────────────────────────────
+
+const BTW_STATE_KEY = Symbol.for("rpiv-btw");
+
+function getState(): BtwState {
+  const g = globalThis as unknown as Record<symbol, BtwState | undefined>;
+  let state = g[BTW_STATE_KEY];
+  if (!state) {
+    state = { histories: new Map(), snapshots: new Map() };
+    g[BTW_STATE_KEY] = state;
+  }
+  return state;
+}
+
+function getSessionFile(ctx: ExtensionContext): string {
   return ctx.sessionManager.getSessionFile() ?? `:${ctx.sessionManager.getSessionId()}`;
 }
 
-// ── Snapshot ──────────────────────────────────────────────────────────
+function getSessionHistory(ctx: ExtensionContext): Array<{ question: string; answer: string }> {
+  const turns = getState().histories.get(getSessionFile(ctx)) ?? [];
+  return turns.map((t) => ({
+    question: typeof t.userMessage.content === "string"
+      ? t.userMessage.content
+      : t.userMessage.content.filter((c): c is { type: "text"; text: string } => c.type === "text").map((c) => c.text).join("\n"),
+    answer: t.assistantMessage.content
+      .filter((c): c is { type: "text"; text: string } => c.type === "text")
+      .map((c) => c.text).join("\n"),
+  }));
+}
 
-function snapshotConversation(ctx: ExtensionContext): Message[] {
-  const cached = store().snapshots.get(sessionKey(ctx));
+function pushSessionTurn(ctx: ExtensionContext, turn: BtwTurn): void {
+  const key = getSessionFile(ctx);
+  const state = getState();
+  let turns = state.histories.get(key);
+  if (!turns) { turns = []; state.histories.set(key, turns); }
+  turns.push(turn);
+}
+
+export function clearSessionHistory(ctx: ExtensionContext): void {
+  getState().histories.set(getSessionFile(ctx), []);
+}
+
+function getSnapshot(ctx: ExtensionContext): Message[] | undefined {
+  return getState().snapshots.get(getSessionFile(ctx))?.messages;
+}
+
+function setSnapshot(ctx: ExtensionContext, messages: Message[]): void {
+  getState().snapshots.set(getSessionFile(ctx), { messages });
+}
+
+export function invalidateSnapshot(ctx: ExtensionContext): void {
+  getState().snapshots.delete(getSessionFile(ctx));
+}
+
+// ── Conversation context ───────────────────────────────────────────────
+
+function readBranchMessages(ctx: ExtensionContext): Message[] {
+  const cached = getSnapshot(ctx);
   if (cached) return cached;
   const branch = ctx.sessionManager.getBranch() as SessionEntry[];
-  const msgs = branch
+  const agentMessages = branch
     .filter((e): e is SessionEntry & { type: "message" } => e.type === "message")
     .map((e) => e.message);
-  return convertToLlm(msgs);
+  return convertToLlm(agentMessages);
+}
+
+function buildBtwMessages(ctx: ExtensionContext, userMessage: UserMessage): Message[] {
+  const branchMessages = readBranchMessages(ctx);
+  const key = getSessionFile(ctx);
+  const turns = getState().histories.get(key) ?? [];
+  const historyMessages: Message[] = turns.flatMap((h) => [h.userMessage, h.assistantMessage]);
+  return [...branchMessages, ...historyMessages, userMessage];
 }
 
 // ── Side agent call ───────────────────────────────────────────────────
 
-async function runSideAgent(
+export async function executeBtw(
   question: string,
-  ctx: ExtensionCommandContext,
-  overlay: BtwOverlay,
-  signal: AbortSignal,
-): Promise<void> {
-  if (!ctx.model) {
-    overlay.setError("No active model");
-    return;
-  }
+  ctx: ExtensionContext,
+  controller: AbortController,
+): Promise<BtwExecResult> {
+  const model = ctx.model;
+  if (!model) return { ok: false, error: "/btw requires an active model" };
 
-  const auth = await ctx.modelRegistry.getApiKeyAndHeaders(ctx.model);
-  if (!auth.ok || !auth.apiKey) {
-    overlay.setError(`Auth failed: ${auth.error ?? "no API key"}`);
-    return;
-  }
+  const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
+  if (!auth.ok) return { ok: false, error: `Model misconfigured: ${auth.error}` };
+  if (!auth.apiKey) return { ok: false, error: "No API key available" };
 
-  const history = store().histories.get(sessionKey(ctx)) ?? [];
-  const conversation = snapshotConversation(ctx);
-
-  const historyMsgs: Message[] = history.flatMap((h) => [
-    { role: "user" as const, content: [{ type: "text" as const, text: h.question }], timestamp: 0 },
-    { role: "assistant" as const, content: [{ type: "text" as const, text: h.answer }], timestamp: 0 },
-  ]);
-
-  const userMsg: UserMessage = {
+  const userMessage: UserMessage = {
     role: "user",
     content: [{ type: "text", text: question }],
     timestamp: Date.now(),
   };
+  const messages = buildBtwMessages(ctx, userMessage);
 
   try {
     const response = await completeSimple(
-      ctx.model,
-      { systemPrompt: BTW_SYSTEM_PROMPT, messages: [...conversation, ...historyMsgs, userMsg], tools: [] },
-      { apiKey: auth.apiKey, headers: auth.headers, signal, reasoning: "off" },
+      model,
+      { systemPrompt: BTW_SYSTEM_PROMPT, messages, tools: [] },
+      { apiKey: auth.apiKey, headers: auth.headers, signal: controller.signal },
     );
 
-    if (signal.aborted) return;
-
+    if (response.stopReason === "aborted") {
+      return { ok: false, aborted: true };
+    }
     if (response.stopReason === "error") {
-      overlay.setError(`Call failed: ${response.errorMessage ?? "unknown"}`);
-      return;
+      return { ok: false, error: response.errorMessage ?? "unknown", stopReason: response.stopReason };
     }
 
-    // Strip DSML markup that reasoning models may emit despite reasoning: off
-    const answer = (response.content as Array<{ type: string; text?: string }>)
-      .filter((c) => c.type === "text" && typeof c.text === "string")
-      .map((c) => c.text!)
+    const answerText = response.content
+      .filter((c): c is { type: "text"; text: string } => c.type === "text")
+      .map((c) => (c as { text: string }).text)
       .join("\n")
-      .replace(/<\|[^|]*\|[^>]*>/g, "")  // strip <| DSML | ...> tags
       .trim();
 
-    if (!answer) {
-      overlay.setError("Empty response");
-      return;
-    }
+    if (!answerText) return { ok: false, error: "Empty response" };
 
-    overlay.finalizeAnswer();
-    store().histories.set(sessionKey(ctx), [...history, { question, answer }]);
+    return { ok: true, answer: answerText, userMessage, assistantMessage: response, stopReason: response.stopReason };
   } catch (err) {
-    if (signal.aborted) return;
-    overlay.setError(`Call threw: ${err instanceof Error ? err.message : String(err)}`);
+    if (controller.signal.aborted) return { ok: false, aborted: true };
+    return { ok: false, error: String(err) };
   }
 }
 
@@ -129,44 +181,57 @@ async function runSideAgent(
 
 export function registerMessageEndSnapshot(pi: ExtensionAPI): void {
   pi.on("message_end", async (event, ctx) => {
-    if (event.message.role !== "assistant") return;
+    const msg = event.message;
+    if (msg.role !== "assistant") return;
     const branch = ctx.sessionManager.getBranch() as SessionEntry[];
-    const msgs = branch
+    const agentMessages = branch
       .filter((e): e is SessionEntry & { type: "message" } => e.type === "message")
       .map((e) => e.message);
-    store().snapshots.set(sessionKey(ctx), convertToLlm(msgs));
+    setSnapshot(ctx, convertToLlm(agentMessages));
   });
 }
 
 export function registerInvalidationHooks(pi: ExtensionAPI): void {
-  pi.on("session_compact", async (_e, ctx) => store().snapshots.delete(sessionKey(ctx)));
-  pi.on("session_tree", async (_e, ctx) => store().snapshots.delete(sessionKey(ctx)));
+  pi.on("session_compact", async (_e, ctx) => invalidateSnapshot(ctx));
+  pi.on("session_tree", async (_e, ctx) => invalidateSnapshot(ctx));
 }
 
-// ── Command ───────────────────────────────────────────────────────────
+// ── Command handler ───────────────────────────────────────────────────
 
 export function registerBtwCommand(pi: ExtensionAPI): void {
   pi.registerCommand("btw", {
     description: "Ask a side question without polluting the main conversation",
     handler: async (args, ctx) => {
       if (!ctx.hasUI) { ctx.ui.notify("/btw requires interactive mode", "error"); return; }
-      const question = (args ?? "").trim();
+      const question = args.trim();
       if (!question) { ctx.ui.notify("Usage: /btw <question>", "warning"); return; }
       if (!ctx.model) { ctx.ui.notify("/btw requires an active model", "error"); return; }
 
-      const history = [...(store().histories.get(sessionKey(ctx)) ?? [])];
       const controller = new AbortController();
 
-      const { overlayPromise, overlay } = showBtwOverlay({
+      const { overlayPromise, controllerReady } = showBtwOverlay({
         ctx,
         question,
-        history,
+        history: getSessionHistory(ctx),
         controller,
-        onClear: () => store().histories.set(sessionKey(ctx), []),
+        onClearHistory: () => clearSessionHistory(ctx),
       });
 
-      const ov = await overlay;
-      await runSideAgent(question, ctx, ov, controller.signal);
+      const overlayCtl = await controllerReady;
+      const result = await executeBtw(question, ctx, controller);
+
+      if (result.ok && result.answer && result.userMessage && result.assistantMessage) {
+        overlayCtl.setAnswer(result.answer);
+        pushSessionTurn(ctx, {
+          userMessage: result.userMessage,
+          assistantMessage: result.assistantMessage,
+        });
+      } else if (result.aborted) {
+        // user pressed Esc — overlay already dismissed
+      } else if (result.error) {
+        overlayCtl.setError(result.error);
+      }
+
       await overlayPromise;
     },
   });
