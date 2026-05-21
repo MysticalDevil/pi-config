@@ -5,7 +5,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { registerAskUserQuestionTool } from "./tool.js";
+import { registerAskUserQuestionTool } from "./tool";
 
 export default function (pi: ExtensionAPI): void {
   registerAskUserQuestionTool(pi);

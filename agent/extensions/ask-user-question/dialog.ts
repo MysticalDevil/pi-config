@@ -6,8 +6,8 @@
  * for final review.
  */
 
-import type { Theme } from "@earendil-works/pi-coding-agent";
-import { matchesKey, truncateToWidth } from "@earendil-works/pi-tui";
+import { getMarkdownTheme, type Theme } from "@earendil-works/pi-coding-agent";
+import { matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import {
   type OptionData,
   type QuestionAnswer,
@@ -16,7 +16,15 @@ import {
   SENTINEL_CHAT,
   SENTINEL_NEXT,
   SENTINEL_OTHER,
-} from "./types.js";
+} from "./types";
+import { PreviewBlockRenderer } from "./preview-block-renderer";
+import {
+  decideLayout,
+  columnWidths,
+  type PreviewLayoutMode,
+  PREVIEW_PADDING_LEFT,
+  adaptLeftWidth,
+} from "./preview-layout-decider";
 
 interface DialogState {
   tabIndex: number;
@@ -46,6 +54,9 @@ export class QuestionnaireDialog {
   private questions: QuestionData[];
   private theme: Theme;
   private done: (result: QuestionnaireResult) => void;
+  private previewBlocks: Map<number, PreviewBlockRenderer>;
+  /** Cross-tab max left column width, computed once on construction. */
+  private adaptiveLeft: number;
 
   constructor(config: DialogConfig) {
     this.questions = config.questions;
@@ -62,6 +73,34 @@ export class QuestionnaireDialog {
       showSubmit: this.questions.length > 1,
       submitChoiceIndex: 0,
     };
+
+    // Build per-question preview renderers
+    const markdownTheme = getMarkdownTheme();
+    this.previewBlocks = new Map();
+    for (let i = 0; i < this.questions.length; i++) {
+      this.previewBlocks.set(
+        i,
+        new PreviewBlockRenderer({
+          question: this.questions[i],
+          theme: this.theme,
+          markdownTheme,
+        }),
+      );
+    }
+
+    // Compute cross-tab max adaptive left width
+    this.adaptiveLeft = this.computeAdaptiveLeft(config.width);
+  }
+
+  private computeAdaptiveLeft(paneWidth: number): number {
+    const tabs = this.questions.map((q) => {
+      const labels = q.options.map((o) => o.label);
+      labels.push(SENTINEL_CHAT);
+      if (!q.multiSelect) labels.push(SENTINEL_OTHER);
+      if (q.multiSelect) labels.push(SENTINEL_NEXT);
+      return { multiSelect: q.multiSelect, labels };
+    });
+    return adaptLeftWidth(tabs, this.questions, paneWidth);
   }
 
   handleInput(data: string): void {
@@ -163,8 +202,10 @@ export class QuestionnaireDialog {
     const th = this.theme;
     const q = this.currentQuestion();
     const items = this.buildOptionList(q);
-    const hasPreview = q.options.some((o) => o.preview && o.preview.length > 0);
-    const isWide = width >= 80;
+    const previewBlock = this.previewBlocks.get(this.state.tabIndex);
+    const hasPreview = previewBlock?.hasAnyPreview() ?? false;
+    const mode = decideLayout(width, width); // terminal width ≈ pane width from pi
+    const isSideBySide = mode === "side-by-side" && hasPreview && !q.multiSelect;
 
     const lines: string[] = [];
     const pad = "  ";
@@ -188,10 +229,15 @@ export class QuestionnaireDialog {
       lines.push("");
     }
 
-    // Option list (left side) + preview (right side, if wide enough)
-    if (hasPreview && isWide) {
-      const previewOpt = q.options[this.state.optionIndex];
-      lines.push(...this.renderSideBySide(items, previewOpt, q, width, th));
+    // Option list + preview
+    if (isSideBySide && previewBlock) {
+      const { leftWidth, rightWidth } = columnWidths(width, this.adaptiveLeft);
+      lines.push(...this.renderSideBySide(items, q, leftWidth, rightWidth, mode, previewBlock, width, th));
+    } else if (hasPreview && !q.multiSelect && previewBlock) {
+      // Stacked: options on top, preview block below
+      lines.push(...this.renderSimpleList(items, q, width, th));
+      lines.push("");
+      lines.push(...this.renderPreviewBlock(previewBlock, width, mode));
     } else {
       lines.push(...this.renderSimpleList(items, q, width, th));
     }
@@ -204,7 +250,9 @@ export class QuestionnaireDialog {
     return lines;
   }
 
-  invalidate(): void {}
+  invalidate(): void {
+    for (const block of this.previewBlocks.values()) block.invalidate();
+  }
 
   // ── Private ─────────────────────────────────────────────────────────
 
@@ -262,11 +310,9 @@ export class QuestionnaireDialog {
       !this.state.selections.has(i) && !this.state.customTexts.has(i) && !this.state.chatAbandoned.has(i),
     );
     if (remaining.length === 0) {
-      // All answered
       this.done({ answers: this.collectAnswers(), cancelled: false });
       return;
     }
-    // Go to next unanswered question
     for (let i = 1; i <= this.questions.length; i++) {
       const ni = (this.state.tabIndex + i) % this.questions.length;
       if (!this.state.selections.has(ni) && !this.state.customTexts.has(ni) && !this.state.chatAbandoned.has(ni)) {
@@ -275,7 +321,6 @@ export class QuestionnaireDialog {
         return;
       }
     }
-    // All done (shouldn't reach here)
     this.done({ answers: this.collectAnswers(), cancelled: false });
   }
 
@@ -319,7 +364,12 @@ export class QuestionnaireDialog {
     return parts.join("   ");
   }
 
-  private renderSimpleList(items: string[], q: QuestionData, width: number, th: Theme): string[] {
+  private renderSimpleList(
+    items: string[],
+    q: QuestionData,
+    width: number,
+    th: Theme,
+  ): string[] {
     const lines: string[] = [];
     const pad = "    ";
     for (let i = 0; i < items.length; i++) {
@@ -327,7 +377,6 @@ export class QuestionnaireDialog {
       const label = items[i];
       const prefix = isFocused ? th.fg("accent", "▶ ") : "  ";
 
-      // Check marks
       const sel = this.state.selections.get(this.state.tabIndex);
       const isMultiPending = this.state.multiSelectPending.get(this.state.tabIndex)?.has(label);
       const checked = sel?.includes(label) || isMultiPending;
@@ -344,7 +393,6 @@ export class QuestionnaireDialog {
       lines.push(truncateToWidth(`${pad}${prefix}${check}${text}`, width));
     }
 
-    // Show "Type something." buffer when in custom mode
     if (this.state.inputMode && this.state.inputMode.questionIndex === this.state.tabIndex) {
       lines.push("");
       const buf = this.state.inputMode.buffer || "";
@@ -355,9 +403,16 @@ export class QuestionnaireDialog {
     return lines;
   }
 
-  private renderSideBySide(items: string[], previewOpt: OptionData | undefined, q: QuestionData, width: number, th: Theme): string[] {
-    const leftWidth = Math.floor(width * 0.45);
-    const rightWidth = width - leftWidth - 4;
+  private renderSideBySide(
+    items: string[],
+    q: QuestionData,
+    leftWidth: number,
+    rightWidth: number,
+    mode: PreviewLayoutMode,
+    previewBlock: PreviewBlockRenderer,
+    totalWidth: number,
+    th: Theme,
+  ): string[] {
     const pad = "    ";
 
     // Left: option list
@@ -376,26 +431,33 @@ export class QuestionnaireDialog {
       leftLines.push(truncateToWidth(`${pad}${prefix}${check}${text}`, leftWidth));
     }
 
-    // Right: preview
-    const previewText = previewOpt?.preview?.trim() ?? "";
-    const rightLines: string[] = [];
-    if (previewText) {
-      rightLines.push(th.fg("accent", th.bold(" Preview ")));
-      rightLines.push(th.fg("borderMuted", "─".repeat(Math.min(20, rightWidth - 2))));
-      for (const ln of previewText.split("\n")) {
-        rightLines.push(th.fg("muted", truncateToWidth(` ${ln}`, rightWidth, "…")));
-      }
-    } else {
-      rightLines.push(th.fg("dim", "(select an option with preview)"));
-    }
+    // Right: preview block (with left padding)
+    const innerRight = Math.max(1, rightWidth - PREVIEW_PADDING_LEFT);
+    const rightLines = this.renderPreviewBlock(previewBlock, innerRight, mode);
+    const rightPad = " ".repeat(PREVIEW_PADDING_LEFT);
+    const paddedRightLines = rightLines.map((l) => (l === "" ? "" : `${rightPad}${l}`));
 
-    // Interleave left and right
-    const maxLen = Math.max(leftLines.length, rightLines.length);
+    // Interleave
+    const maxLen = Math.max(leftLines.length, paddedRightLines.length);
     const result: string[] = [];
     for (let i = 0; i < maxLen; i++) {
-      const left = i < leftLines.length ? leftLines[i] : " ".repeat(leftWidth);
-      result.push(left + "  " + (i < rightLines.length ? rightLines[i] : ""));
+      const leftRaw = leftLines[i] ?? "";
+      const rightRaw = paddedRightLines[i] ?? "";
+      // Pad left column to exact width for alignment
+      const leftClamped = truncateToWidth(leftRaw, leftWidth, "");
+      const leftPad = " ".repeat(Math.max(0, leftWidth - visibleWidth(leftClamped)));
+      const joined = `${leftClamped}${leftPad}  ${rightRaw}`;
+      result.push(truncateToWidth(joined, totalWidth, ""));
     }
     return result;
+  }
+
+  private renderPreviewBlock(
+    block: PreviewBlockRenderer,
+    innerWidth: number,
+    mode: PreviewLayoutMode,
+  ): string[] {
+    const isFocused = true; // we're always showing preview for focused option
+    return block.renderBlock(innerWidth, this.state.optionIndex, mode, isFocused);
   }
 }

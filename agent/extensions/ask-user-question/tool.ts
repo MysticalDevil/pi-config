@@ -6,10 +6,10 @@
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
-import { QuestionnaireDialog } from "./dialog.js";
-import { buildErrorResult, buildResponse } from "./response.js";
-import { type QuestionParams, QuestionParamsSchema, MAX_OPTIONS, MIN_OPTIONS, MAX_QUESTIONS } from "./types.js";
-import { validateQuestionnaire } from "./validate.js";
+import { QuestionnaireDialog } from "./dialog";
+import { buildErrorResult, buildResponse } from "./response";
+import { type QuestionParams, QuestionParamsSchema, MAX_OPTIONS, MIN_OPTIONS, MAX_QUESTIONS } from "./types";
+import { validateQuestionnaire } from "./validate";
 
 export function registerAskUserQuestionTool(pi: ExtensionAPI): void {
   pi.registerTool({

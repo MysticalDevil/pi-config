@@ -5,7 +5,7 @@
  * and tool/format-answer.ts.
  */
 
-import type { QuestionAnswer, QuestionnaireResult } from "./types.js";
+import type { QuestionAnswer, QuestionnaireResult } from "./types";
 
 export function formatAnswer(answer: QuestionAnswer): string {
   switch (answer.kind) {
