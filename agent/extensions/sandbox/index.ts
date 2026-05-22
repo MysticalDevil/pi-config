@@ -482,6 +482,9 @@ export default function (pi: ExtensionAPI) {
   let sandboxActive = false; // true when sandbox mode is actually enforcing
   let localCwd = process.cwd();
   let localBash = createBashTool(localCwd);
+  let sandboxedBash = createBashTool(localCwd, {
+    operations: createSandboxedBashOps(sandboxConfig),
+  });
 
   // ── CLI flag ──────────────────────────────────────────────────────────
 
@@ -567,9 +570,6 @@ export default function (pi: ExtensionAPI) {
 
       // sandbox mode with bwrap
       if (currentMode === "sandbox" && bwrapAvailable && sandboxConfig.enabled) {
-        const sandboxedBash = createBashTool(localCwd, {
-          operations: createSandboxedBashOps(sandboxConfig),
-        });
         return sandboxedBash.execute(id, params, signal, onUpdate);
       }
 
