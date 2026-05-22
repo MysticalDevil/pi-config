@@ -208,12 +208,18 @@ function scanProject(cwd: string): ProjectInfo {
     }
   }
 
-  // Detect package manager
+  // Detect package manager (JS + non-JS)
   let packageManager = "npm";
   if (files.includes("pnpm-lock.yaml") || configFiles.includes("pnpm-workspace.yaml"))
     packageManager = "pnpm";
   else if (files.includes("yarn.lock")) packageManager = "yarn";
   else if (files.includes("bun.lockb")) packageManager = "bun";
+  else if (files.includes("Cargo.toml")) packageManager = "cargo";
+  else if (files.includes("go.mod")) packageManager = "go modules";
+  else if (files.includes("build.zig")) packageManager = "zig build";
+  else if (files.includes("poetry.lock")) packageManager = "poetry";
+  else if (files.includes("uv.lock")) packageManager = "uv";
+  else if (files.includes("requirements.txt") || files.includes("Pipfile")) packageManager = "pip";
 
   // Package name from package.json
   let projectName = path.basename(cwd);
