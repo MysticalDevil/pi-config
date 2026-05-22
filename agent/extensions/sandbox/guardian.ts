@@ -161,7 +161,7 @@ export async function guardianReview(
     );
 
     let stdout = "";
-    let _stderr = "";
+    let stderr = "";
     let settled = false;
 
     const finish = (result: GuardianResult) => {
@@ -194,7 +194,7 @@ export async function guardianReview(
     });
 
     proc.stderr?.on("data", (data: Buffer) => {
-      _stderr += data.toString();
+      stderr += data.toString();
     });
 
     proc.on("close", (code) => {
@@ -222,7 +222,10 @@ export async function guardianReview(
         }
       }
 
-      // Failed to parse — conservative deny
+      // Failed to parse — log stderr for diagnostics, then conservative deny
+      if (stderr.trim()) {
+        console.error(`guardian stderr (exit ${code}):`, stderr.trim().slice(0, 200));
+      }
       finish({
         outcome: "deny",
         reason: code === 0 ? "Guardian returned non-JSON output" : `Guardian exited ${code}`,
