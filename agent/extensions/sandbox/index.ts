@@ -586,7 +586,7 @@ export default function (pi: ExtensionAPI) {
 
   // ── User bash (!! and ! commands) ─────────────────────────────────────
 
-  pi.on("user_bash", (event, ctx) => {
+  pi.on("user_bash", async (event, ctx) => {
     const command = event.command;
 
     // Secret detection on git commit
@@ -637,15 +637,38 @@ export default function (pi: ExtensionAPI) {
           },
         };
       }
-      if (evaluation.decision === "prompt" && !ctx.hasUI) {
-        return {
-          result: {
-            output: "Auto-review: command requires human review but no UI available.",
-            exitCode: 1,
-            cancelled: false,
-            truncated: false,
-          },
-        };
+      if (evaluation.decision === "prompt") {
+        // Auto-review: guardian makes the final call for user commands too
+        try {
+          const gr = await guardianReview(command, ctx.cwd, 8000);
+          if (gr.decision === "allow") {
+            ctx.ui.notify(`✅ Auto-approved by guardian: ${gr.reason}`, "info");
+            // fall through to execute
+          } else {
+            ctx.ui.notify(`🚫 Auto-review blocked by guardian: ${gr.reason}`, "error");
+            return {
+              result: {
+                output: `Auto-review blocked: ${gr.reason}`,
+                exitCode: 1,
+                cancelled: false,
+                truncated: false,
+              },
+            };
+          }
+        } catch (e) {
+          ctx.ui.notify(
+            `⚠️ Guardian unavailable: ${e instanceof Error ? e.message : e}. Blocking: ${command.slice(0, 80)}`,
+            "warning",
+          );
+          return {
+            result: {
+              output: `Guardian review failed — blocked for safety.`,
+              exitCode: 1,
+              cancelled: false,
+              truncated: false,
+            },
+          };
+        }
       }
 
       // Check for writes to protected paths (shell redirects to .env etc.)
