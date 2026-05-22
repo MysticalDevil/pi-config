@@ -308,6 +308,12 @@ After completing a step, include a [DONE:n] tag in your response.`,
 
   // Restore state on session start/resume
   pi.on("session_start", async (_event, ctx) => {
+    // Reset per-session state to prevent cross-session leakage
+    planModeEnabled = false;
+    executionMode = false;
+    todoItems = [];
+    previousActiveTools = null;
+
     if (pi.getFlag("plan") === true) {
       planModeEnabled = true;
     }
