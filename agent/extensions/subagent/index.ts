@@ -396,7 +396,8 @@ async function runSingleAgent(
         resolve(code ?? 0);
       });
 
-      proc.on("error", () => {
+      proc.on("error", (err) => {
+        currentResult.stderr = `spawn failed: ${err.message}`;
         resolve(1);
       });
 
