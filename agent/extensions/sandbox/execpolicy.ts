@@ -299,15 +299,10 @@ const DEFAULT_RULES: PolicyFile = {
     },
   ],
   banned_prefixes: [
-    ["python3"],
     ["python3", "-c"],
-    ["python"],
     ["python", "-c"],
-    ["bash"],
     ["bash", "-c"],
-    ["sh"],
     ["sh", "-c"],
-    ["zsh"],
     ["zsh", "-c"],
   ],
 };
