@@ -49,9 +49,8 @@ function entryToMessage(entry: SessionEntry): AgentMessage | undefined {
   }
   if (entry.type === "compaction") {
     return {
-      role: "compactionSummary",
-      summary: entry.summary,
-      tokensBefore: entry.tokensBefore,
+      role: "user",
+      content: [{ type: "text", text: `Previous session summary:\n${entry.summary}` }],
       timestamp: new Date(entry.timestamp).getTime(),
     };
   }
