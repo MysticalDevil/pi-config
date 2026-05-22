@@ -11,15 +11,11 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 export default function (pi: ExtensionAPI) {
   pi.on("model_select", async (event, ctx) => {
-    const { model, previousModel, source } = event;
-
-    // Format model identifiers
-    const next = `${model.provider}/${model.id}`;
-    const prev = previousModel ? `${previousModel.provider}/${previousModel.id}` : "none";
+    const { model, previousModel: _, source } = event;
 
     // Show notification on change
     if (source !== "restore") {
-      ctx.ui.notify(`Model: ${next}`, "info");
+      ctx.ui.notify(`Model: ${model.provider}/${model.id}`, "info");
     }
 
     // Update status bar with current model
