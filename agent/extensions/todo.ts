@@ -331,14 +331,14 @@ class TodoOverlay {
       return;
     }
 
-    if (!this.registered) {
-      ctx.ui.setWidget(WIDGET_KEY, (tui, theme) => ({
-        render: (width: number) => this.renderWidget(state, theme, width),
-        invalidate: () => { this.registered = false; },
-      }), { placement: "aboveEditor" });
-      this.registered = true;
-    }
-    // For non-registered refresh: re-register
+    // Always re-register to trigger a re-render with latest state.
+    // The TUI widget only refreshes when setWidget is called, so a
+    // no-op on an already-registered widget would show stale data.
+    ctx.ui.setWidget(WIDGET_KEY, (_tui, theme) => ({
+      render: (width: number) => this.renderWidget(state, theme, width),
+      invalidate: () => { this.registered = false; },
+    }), { placement: "aboveEditor" });
+    this.registered = true;
   }
 
   private renderWidget(state: AppState, theme: Theme, width: number): string[] {

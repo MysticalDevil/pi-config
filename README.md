@@ -16,8 +16,9 @@ Personal [pi](https://pi.dev) coding agent configuration — extensions, agents,
 │   ├── settings.json     # Model, theme, thinking preferences
 │   └── AGENTS.md         # Global agent rules
 ├── sandbox.json          # Project-level sandbox config
-├── tsconfig.json         # TypeScript config for oxlint
-└── .oxfmtrc.json         # oxfmt config
+├── tsconfig.json         # TypeScript config
+├── oxlint.config.ts      # oxlint config
+└── oxfmt.config.ts       # oxfmt config
 ```
 
 ## Key Features
