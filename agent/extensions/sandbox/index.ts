@@ -33,7 +33,7 @@ import { join, resolve } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { type BashOperations, createBashTool, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { evaluateCommand, type LoadedPolicy, loadPolicy } from "./execpolicy";
-import { guardianReview } from "./guardian";
+import { guardianReview, lightweightModel } from "./guardian";
 import { auditLogHook, configProtectionHook, hooks, networkSafetyHook, setupHooks } from "./hooks";
 import { setupSnapshots } from "./shell-snapshot";
 import { setupTurnDiff } from "./turn-diff";
@@ -635,7 +635,13 @@ export default function (pi: ExtensionAPI) {
         // Auto-review: guardian makes the final call for user commands too
         ctx.ui.setStatus("guardian", `🔍 Guardian reviewing: ${command.slice(0, 60)}...`);
         try {
-          const gr = await guardianReview(command, ctx.cwd, 60000, ctx.signal);
+          const gr = await guardianReview(
+            command,
+            ctx.cwd,
+            60000,
+            ctx.signal,
+            lightweightModel(ctx.model?.id),
+          );
           if (gr.outcome === "allow") {
             ctx.ui.setStatus("guardian", undefined);
             ctx.ui.notify(`✅ Auto-approved: ${gr.reason}`, "warning");
@@ -778,7 +784,13 @@ export default function (pi: ExtensionAPI) {
         // auto-review: guardian makes the final call, no user prompt
         ctx.ui.setStatus("guardian", `🔍 Guardian reviewing: ${command.slice(0, 60)}...`);
         try {
-          const gr = await guardianReview(command, ctx.cwd, 60000, ctx.signal);
+          const gr = await guardianReview(
+            command,
+            ctx.cwd,
+            60000,
+            ctx.signal,
+            lightweightModel(ctx.model?.id),
+          );
           ctx.ui.setStatus("guardian", undefined);
           if (gr.outcome === "allow") {
             ctx.ui.notify(`✅ Auto-approved: ${gr.reason}`, "warning");

@@ -17,6 +17,39 @@
 
 import { spawn } from "node:child_process";
 
+// ── Lightweight model mapping ─────────────────────────────────────────
+
+/** Map a primary model to its lightweight variant for guardian review. */
+export function lightweightModel(modelId: string | undefined): string | null {
+  if (!modelId) return null;
+  const id = modelId.toLowerCase();
+  const mappings: [RegExp, string][] = [
+    [/deepseek.v4/i, "deepseek-v4-flash"],
+    [/deepseek/i, "deepseek-v4-flash"],
+    [/claude.sonnet.5/i, "claude-haiku-5"],
+    [/claude.sonnet/i, "claude-haiku"],
+    [/claude.opus/i, "claude-haiku"],
+    [/claude/i, "claude-haiku"],
+    [/gpt.?5\.?5/i, "gpt-5-mini"],
+    [/gpt.?5/i, "gpt-5-mini"],
+    [/gpt.?4o/i, "gpt-4o-mini"],
+    [/gpt/i, "gpt-4o-mini"],
+    [/gemini.3.*pro/i, "gemini-3-flash"],
+    [/gemini.2.*pro/i, "gemini-2.5-flash"],
+    [/gemini.*pro/i, "gemini-3-flash"],
+    [/gemini/i, "gemini-3-flash"],
+    [/qwen.*max/i, "qwen-turbo"],
+    [/qwen.?3/i, "qwen-3-turbo"],
+    [/qwen/i, "qwen-turbo"],
+    [/kimi.?k2/i, "kimi-k2-lite"],
+    [/kimi/i, "kimi-k1.5-flash"],
+  ];
+  for (const [re, replacement] of mappings) {
+    if (re.test(id)) return replacement;
+  }
+  return null;
+}
+
 // ── Types ─────────────────────────────────────────────────────────────
 
 export interface GuardianResult {
@@ -100,6 +133,7 @@ export async function guardianReview(
   cwd: string,
   timeoutMs: number = 60000,
   signal?: AbortSignal,
+  modelId?: string | null,
 ): Promise<GuardianResult> {
   // No execpolicy pre-check — caller already determined review is needed.
   // Guardian's job is LLM-based evaluation only.
@@ -113,12 +147,17 @@ export async function guardianReview(
 
   return new Promise((resolve) => {
     const pi = getPiCommand();
-    const proc = spawn(pi.cmd, [...pi.args, "-p", "--no-session", "--no-extensions", prompt], {
-      cwd,
-      stdio: ["ignore", "pipe", "pipe"],
-      timeout: timeoutMs,
-      env: { ...process.env, PI_SKIP_VERSION_CHECK: "1" },
-    });
+    const modelFlag = modelId ?? "deepseek-v4-flash";
+    const proc = spawn(
+      pi.cmd,
+      [...pi.args, "-p", "--no-session", "--no-extensions", "--model", modelFlag, prompt],
+      {
+        cwd,
+        stdio: ["ignore", "pipe", "pipe"],
+        timeout: timeoutMs,
+        env: { ...process.env, PI_SKIP_VERSION_CHECK: "1" },
+      },
+    );
 
     let stdout = "";
     let _stderr = "";
