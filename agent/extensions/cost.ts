@@ -239,15 +239,67 @@ export default function (pi: ExtensionAPI) {
         }
       }
 
-      // Show in custom UI
-      await ctx.ui.custom((_tui, _theme, _kb, done) => {
+      // Show in custom UI with scroll support
+      let scrollOffset = 0;
+
+      await ctx.ui.custom((tui, _theme, _kb, done) => {
         return {
           render(_width: number) {
-            return lines;
+            const availHeight = Math.max(5, (tui as any).getHeight?.() ?? 40) - 2;
+            const maxScroll = Math.max(0, lines.length - availHeight);
+            if (scrollOffset > maxScroll) scrollOffset = maxScroll;
+            if (scrollOffset < 0) scrollOffset = 0;
+
+            if (lines.length <= availHeight) {
+              return lines;
+            }
+
+            const visible = lines.slice(scrollOffset, scrollOffset + availHeight);
+            const pct = maxScroll > 0
+              ? `${Math.round((scrollOffset / maxScroll) * 100)}%`
+              : "ALL";
+            return [
+              ...visible,
+              _theme.fg("dim", `── ${pct} — ↑↓ PgUp PgDn Home End — Esc/Enter to close`),
+            ];
           },
           invalidate() {},
           handleInput(data: string) {
-            if (data === "\x1b" || data === "\r") done(undefined);
+            if (data === "\x1b" || data === "\r") {
+              done(undefined);
+              return;
+            }
+            // Scroll controls
+            if (data === "\x1b[A" || data === "k") { // Up
+              scrollOffset = Math.max(0, scrollOffset - 1);
+              tui.requestRender();
+              return;
+            }
+            if (data === "\x1b[B" || data === "j") { // Down
+              scrollOffset++;
+              tui.requestRender();
+              return;
+            }
+            if (data === "\x1b[5~") { // PageUp
+              scrollOffset = Math.max(0, scrollOffset - 10);
+              tui.requestRender();
+              return;
+            }
+            if (data === "\x1b[6~") { // PageDown
+              scrollOffset += 10;
+              tui.requestRender();
+              return;
+            }
+            if (data === "\x1b[H" || data === "g") { // Home
+              scrollOffset = 0;
+              tui.requestRender();
+              return;
+            }
+            if (data === "\x1b[F" || data === "G") { // End
+              scrollOffset = Infinity; // clamped in render
+              tui.requestRender();
+              return;
+            }
           },
         };
       });
