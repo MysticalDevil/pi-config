@@ -24,6 +24,7 @@ export interface PostToolUseResult {
 }
 
 export interface PreToolUseHook {
+  hookType?: "pre";
   name: string;
   description?: string;
   /** Lower priority runs first. Default 100. */
@@ -35,6 +36,7 @@ export interface PreToolUseHook {
 }
 
 export interface PostToolUseHook {
+  hookType?: "post";
   name: string;
   description?: string;
   priority?: number;
@@ -61,10 +63,9 @@ class HookRegistry {
   private postHooks: (PostToolUseHook & { _enabled: boolean })[] = [];
 
   register(hook: PreToolUseHook | PostToolUseHook): void {
-    // Discriminate by handler param count:
-    // PreToolUseHook: (toolName, params)
-    // PostToolUseHook: (toolName, params, result)
-    if (hook.handler.length <= 2) {
+    // Discriminate by explicit hookType, fall back to handler param count
+    const isPre = hook.hookType === "pre" || (!hook.hookType && hook.handler.length <= 2);
+    if (isPre) {
       this.preHooks.push({ ...hook, _enabled: true });
       this.preHooks.sort((a, b) => (a.priority ?? 100) - (b.priority ?? 100));
     } else {
@@ -262,6 +263,7 @@ export function setupHooks(pi: ExtensionAPI) {
  * Pre-built hook: warn on curl/wget to suspicious domains
  */
 export const networkSafetyHook: PreToolUseHook = {
+  hookType: "pre",
   name: "network-safety",
   description: "Warn when bash commands access suspicious domains",
   priority: 50,
@@ -292,6 +294,7 @@ export const networkSafetyHook: PreToolUseHook = {
  * Pre-built hook: prevent edits to sensitive config files
  */
 export const configProtectionHook: PreToolUseHook = {
+  hookType: "pre",
   name: "config-protection",
   description: "Prevent editing of sensitive config files",
   priority: 40,
@@ -324,6 +327,7 @@ export const configProtectionHook: PreToolUseHook = {
  * Pre-built hook: log all bash commands for audit
  */
 export const auditLogHook: PostToolUseHook = {
+  hookType: "post",
   name: "audit-log",
   description: "Log all bash command results for audit trail",
   priority: 200,
