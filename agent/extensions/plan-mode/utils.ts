@@ -7,10 +7,6 @@
 const DESTRUCTIVE_PATTERNS = [
   /\brm\b/i,
   /\brmdir\b/i,
-  /\bmv\b/i,
-  /\bcp\b/i,
-  /\bmkdir\b/i,
-  /\btouch\b/i,
   /\bchmod\b/i,
   /\bchown\b/i,
   /\bchgrp\b/i,
@@ -19,7 +15,8 @@ const DESTRUCTIVE_PATTERNS = [
   /\btruncate\b/i,
   /\bdd\b/i,
   /\bshred\b/i,
-  /(^|[^<])>(?!>)/,
+  // File-redirection write: > file (not >& or >> which are handled separately)
+  /(?:^|[\s;|&])([1-2]?)?>(?!&|>|\d)/,
   />>/,
   /\bnpm\s+(install|uninstall|update|ci|link|publish)/i,
   /\byarn\s+(add|remove|install|publish)/i,
@@ -43,6 +40,7 @@ const DESTRUCTIVE_PATTERNS = [
 
 // Safe read-only commands allowed in plan mode
 const SAFE_PATTERNS = [
+  /^\s*(\S*--(help|version)|\S*(-[hV]|--version|--help))\s*$/, // any cmd --help/--version
   /^\s*cat\b/,
   /^\s*head\b/,
   /^\s*tail\b/,
@@ -78,34 +76,70 @@ const SAFE_PATTERNS = [
   /^\s*top\b/,
   /^\s*htop\b/,
   /^\s*free\b/,
-  /^\s*git\s+(status|log|diff|show|branch|remote|config\s+--get|stash\s+(list|show)|tag|checkout|pull|fetch)/i,
-  /^\s*git\s+ls-/i,
+  /^\s*xxd\b/,
+  /^\s*readelf\b/,
+  /^\s*cp\b/,
+  /^\s*mkdir\b/,
+  /^\s*mv\b/,
+  /^\s*touch\b/,
+  /^\s*git\s+(status|log|diff|show|branch|remote|config\s+--get|stash\s+(list|show)|tag|checkout|pull|fetch|clone\s|ls-)/i,
   /^\s*npm\s+(list|ls|view|info|search|outdated|audit)/i,
   /^\s*yarn\s+(list|info|why|audit)/i,
-  /^\s*node\s+--version/i,
-  /^\s*python\s+--version/i,
+  /^\s*pnpm\s+(list|ls|view|info|search|outdated|audit|why)/i,
+  /^\s*bun\s+(pm\s+ls)/i,
+  /^\s*node\b/,
+  /^\s*python\b/,
+  /^\s*python3\b/,
   /^\s*curl\s/i,
-  /^\s*wget\s+-O\s*-/i,
+  /^\s*wget\s/i,
   /^\s*jq\b/,
-  /^\s*sed\s+-n/i,
+  /^\s*sed\b/,
   /^\s*awk\b/,
   /^\s*rg\b/,
   /^\s*fd\b/,
   /^\s*bat\b/,
   /^\s*eza\b/,
+  /^\s*sg\b/,
+  /^\s*ast-grep\b/,
   /^\s*cd\b/,
-  /^\s*echo\b/,
   /^\s*export\b/,
+  /^\s*\S+\s*--help\b/,
+  /^\s*\S+\s*--version\b/,
+  /^\s*\S+\s*-V\b/,
+  /^\s*\S+\s*-\?\b/,
 ];
 
+/**
+ * Strip harmless shell constructs from a command before checking:
+ *   - stderr redirections: 2>&1, 1>&2, 2>/dev/null, &>/dev/null
+ *   - common read-only flags: --help, --version, -h, -V
+ */
+function stripHarmlessConstructs(cmd: string): string {
+  return cmd
+    .replace(/\s*2?>&1\b/g, "")
+    .replace(/\s*1>&2\b/g, "")
+    .replace(/\s*[12]?>\s*\/dev\/null\b/g, "")
+    .replace(/\s*&>\s*\/dev\/null\b/g, "")
+    .replace(/\s*--(help|version)\b/g, "")
+    .replace(/\s*-[hV]\b/g, "")
+    .trim();
+}
+
 export function isSafeCommand(command: string): boolean {
-  if (/\$\(|`/.test(command)) return false;
+  // Block command substitution (backticks and $())
+  if (new RegExp("`").test(command) || /\$\(/.test(command)) return false;
+  // Block OR operator (could hide destructive commands in fallback)
   if (/\|\|/.test(command)) return false;
+  // Block sub-shells
+  if (new RegExp("\\$\\(").test(command)) return false;
 
   const subcommands = command
-    .split(/&&|;|\|/)
-    .map((s) => s.trim())
+    .split(/&&/)
+    .flatMap((s) => s.split(";"))
+    .flatMap((s) => s.split(/\|/))
+    .map((s) => stripHarmlessConstructs(s.trim()))
     .filter(Boolean);
+
   for (const sub of subcommands) {
     const isDestructive = DESTRUCTIVE_PATTERNS.some((p) => p.test(sub));
     const isSafe = SAFE_PATTERNS.some((p) => p.test(sub));

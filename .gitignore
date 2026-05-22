@@ -21,3 +21,4 @@ skills/
 *.log
 agent/settings.json
 agent/models.json
+web-search.json
