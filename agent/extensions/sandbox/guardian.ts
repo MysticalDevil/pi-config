@@ -82,10 +82,16 @@ function getPiCommand(): { cmd: string; args: string[] } {
 export async function guardianReview(
   command: string,
   cwd: string,
-  timeoutMs: number = 15000,
+  timeoutMs: number = 60000,
+  signal?: AbortSignal,
 ): Promise<GuardianResult> {
   // No execpolicy pre-check — caller already determined review is needed.
   // Guardian's job is LLM-based evaluation only.
+
+  // Check if already aborted
+  if (signal?.aborted) {
+    return { decision: "prompt", reason: "Aborted before review" };
+  }
 
   const prompt = buildGuardianPrompt(command, cwd);
 
@@ -105,6 +111,8 @@ export async function guardianReview(
     const finish = (result: GuardianResult) => {
       if (settled) return;
       settled = true;
+      clearTimeout(timeoutId);
+      signal?.removeEventListener("abort", onAbort);
       try {
         proc.kill("SIGTERM");
       } catch (e) {
@@ -116,8 +124,14 @@ export async function guardianReview(
     };
 
     const timeoutId = setTimeout(() => {
-      finish({ decision: "forbidden", reason: "Guardian timed out — blocking for safety" });
+      finish({ decision: "prompt", reason: "Guardian timed out — manual review needed" });
     }, timeoutMs);
+
+    // AbortSignal: clean up on Esc
+    const onAbort = () => {
+      finish({ decision: "prompt", reason: "User cancelled guardian review" });
+    };
+    signal?.addEventListener("abort", onAbort, { once: true });
 
     proc.stdout?.on("data", (data: Buffer) => {
       stdout += data.toString();
