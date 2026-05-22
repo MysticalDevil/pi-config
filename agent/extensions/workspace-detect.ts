@@ -106,7 +106,7 @@ function detectPython(dir: string): ProjectInfo | null {
   if (hasPyproject) {
     try {
       const raw = readFileSync(join(dir, "pyproject.toml"), "utf-8");
-      if (raw.includes("[tool.ruff]")) linter = "ruff";
+      if (/^\[tool\.ruff\]/m.test(raw)) linter = "ruff";
     } catch (e) {
       if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
     }
