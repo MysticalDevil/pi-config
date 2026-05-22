@@ -22,7 +22,7 @@ import {
   type ExtensionContext,
   type SessionEntry,
 } from "@earendil-works/pi-coding-agent";
-import { showBtwOverlay } from "./btw-ui.js";
+import { showBtwOverlay } from "./btw-ui";
 
 // ── System prompt ─────────────────────────────────────────────────────
 

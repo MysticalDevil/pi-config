@@ -32,17 +32,11 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { type BashOperations, createBashTool, getAgentDir } from "@earendil-works/pi-coding-agent";
-import { evaluateCommand, type LoadedPolicy, loadPolicy } from "./execpolicy.js";
-import { guardianReview } from "./guardian.js";
-import {
-  auditLogHook,
-  configProtectionHook,
-  hooks,
-  networkSafetyHook,
-  setupHooks,
-} from "./hooks.js";
-import { setupSnapshots } from "./shell-snapshot.js";
-import { setupTurnDiff } from "./turn-diff.js";
+import { evaluateCommand, type LoadedPolicy, loadPolicy } from "./execpolicy";
+import { guardianReview } from "./guardian";
+import { auditLogHook, configProtectionHook, hooks, networkSafetyHook, setupHooks } from "./hooks";
+import { setupSnapshots } from "./shell-snapshot";
+import { setupTurnDiff } from "./turn-diff";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 

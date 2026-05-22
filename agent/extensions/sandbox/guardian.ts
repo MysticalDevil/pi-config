@@ -16,7 +16,7 @@
  */
 
 import { spawn } from "node:child_process";
-import { type Decision, evaluateCommand, loadPolicy } from "./execpolicy.js";
+import { type Decision } from "./execpolicy";
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -84,15 +84,8 @@ export async function guardianReview(
   cwd: string,
   timeoutMs: number = 15000,
 ): Promise<GuardianResult> {
-  // Quick pre-check: if execpolicy already forbids it, skip LLM call
-  const policy = loadPolicy(cwd);
-  const { decision } = evaluateCommand(command, policy);
-  if (decision === "forbidden") {
-    return { decision: "forbidden", reason: "Forbidden by execpolicy rules" };
-  }
-  if (decision === "prompt") {
-    return { decision: "prompt", reason: "Flagged by execpolicy rules" };
-  }
+  // No execpolicy pre-check — caller already determined review is needed.
+  // Guardian's job is LLM-based evaluation only.
 
   const prompt = buildGuardianPrompt(command, cwd);
 
@@ -123,7 +116,7 @@ export async function guardianReview(
     };
 
     const timeoutId = setTimeout(() => {
-      finish({ decision: "allow", reason: "Guardian timed out — allowing" });
+      finish({ decision: "forbidden", reason: "Guardian timed out — blocking for safety" });
     }, timeoutMs);
 
     proc.stdout?.on("data", (data: Buffer) => {
@@ -157,19 +150,19 @@ export async function guardianReview(
         }
       }
 
-      // Failed to parse — assume safe
+      // Failed to parse — conservative block
       finish({
-        decision: "allow",
+        decision: "forbidden",
         reason:
           code === 0
-            ? "Guardian returned non-JSON output — allowing"
-            : `Guardian exited ${code} — allowing`,
+            ? "Guardian returned non-JSON output — blocking"
+            : `Guardian exited ${code} — blocking`,
       });
     });
 
     proc.on("error", () => {
       clearTimeout(timeoutId);
-      finish({ decision: "allow", reason: "Guardian spawn failed — allowing" });
+      finish({ decision: "forbidden", reason: "Guardian spawn failed — blocking" });
     });
   });
 }
