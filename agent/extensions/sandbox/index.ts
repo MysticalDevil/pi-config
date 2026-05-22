@@ -642,7 +642,7 @@ export default function (pi: ExtensionAPI) {
         try {
           const gr = await guardianReview(command, ctx.cwd, 8000);
           if (gr.decision === "allow") {
-            ctx.ui.notify(`✅ Auto-approved by guardian: ${gr.reason}`, "info");
+            ctx.ui.notify(`✅ Auto-approved by guardian: ${gr.reason}`, "warning");
             // fall through to execute
           } else {
             ctx.ui.notify(`🚫 Auto-review blocked by guardian: ${gr.reason}`, "error");
@@ -783,7 +783,7 @@ export default function (pi: ExtensionAPI) {
         try {
           const gr = await guardianReview(command, ctx.cwd, 8000);
           if (gr.decision === "allow") {
-            ctx.ui.notify(`✅ Auto-approved by guardian: ${gr.reason}`, "info");
+            ctx.ui.notify(`✅ Auto-approved by guardian: ${gr.reason}`, "warning");
             // fall through to execute
           } else {
             ctx.ui.notify(
