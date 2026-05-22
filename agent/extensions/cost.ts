@@ -132,30 +132,26 @@ export default function (pi: ExtensionAPI) {
   });
 
   // Restore state on session start
-  pi.on("session_start", async (_event, ctx) => {
-    const entries = ctx.sessionManager.getEntries();
+  function restoreCostData(entries: Array<{ type: string; customType?: string; data?: unknown }>) {
     for (const entry of entries) {
       if (entry.type === "custom" && entry.customType === "cost-data") {
         const data = entry.data as SessionCostData | undefined;
         if (data) {
           stats = data;
+          return;
         }
       }
     }
+  }
+
+  pi.on("session_start", async (_event, ctx) => {
+    restoreCostData(ctx.sessionManager.getEntries());
     updateWidget(ctx);
   });
 
   // Update widget on tree navigation
   pi.on("session_tree", async (_event, ctx) => {
-    const entries = ctx.sessionManager.getBranch();
-    for (const entry of entries) {
-      if (entry.type === "custom" && entry.customType === "cost-data") {
-        const data = entry.data as SessionCostData | undefined;
-        if (data) {
-          stats = data;
-        }
-      }
-    }
+    restoreCostData(ctx.sessionManager.getBranch());
     updateWidget(ctx);
   });
 
