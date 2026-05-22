@@ -831,6 +831,16 @@ export default function (pi: ExtensionAPI) {
           reason: `Sandbox: write to protected path "${filepath}" is blocked`,
         };
       }
+      const resolved = resolve(filepath);
+      for (const denied of sandboxConfig.deniedPaths) {
+        if (resolved.startsWith(`${denied}/`) || resolved === denied) {
+          ctx.ui.notify(`🔒 Sandbox: write to denied path blocked: ${filepath}`, "warning");
+          return {
+            block: true,
+            reason: `Sandbox: write to "${filepath}" is blocked (denied path)`,
+          };
+        }
+      }
     }
 
     if (event.toolName === "read") {
