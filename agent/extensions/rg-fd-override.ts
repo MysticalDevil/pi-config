@@ -14,6 +14,36 @@
 import { spawnSync } from "node:child_process";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
+import { Type } from "typebox";
+
+// ── Parameter schemas (match built-in tool signatures) ────────────────
+
+const GrepParams = Type.Object({
+  pattern: Type.String({ description: "Search pattern (regex or literal string)" }),
+  path: Type.Optional(
+    Type.String({ description: "Directory or file to search (default: current directory)" }),
+  ),
+  glob: Type.Optional(
+    Type.String({ description: "Filter files by glob pattern, e.g. '*.ts' or '**/*.spec.ts'" }),
+  ),
+  ignoreCase: Type.Optional(
+    Type.Boolean({ description: "Case-insensitive search (default: false)" }),
+  ),
+  literal: Type.Optional(
+    Type.Boolean({
+      description: "Treat pattern as literal string instead of regex (default: false)",
+    }),
+  ),
+});
+
+const FindParams = Type.Object({
+  pattern: Type.String({
+    description: "Glob pattern to match files, e.g. '*.ts', '**/*.json', or 'src/**/*.spec.ts'",
+  }),
+  path: Type.Optional(
+    Type.String({ description: "Directory to search in (default: current directory)" }),
+  ),
+});
 
 // ── Availability detection (cached at load time) ─────────────────────
 
@@ -116,8 +146,7 @@ export default function (pi: ExtensionAPI) {
       ? "Search file contents for a pattern (uses ripgrep). Respects .gitignore. Output truncated to 100 matches or 50KB. Supports full regex syntax, --glob filtering, --ignore-case, --fixed-strings."
       : "Search file contents for a pattern. Respects .gitignore. Output truncated to 100 matches or 50KB. Supports full regex syntax, file type filtering, case-insensitive and literal matching.",
 
-    // Inherit built-in parameter schema implicitly; define inline for self-documentation
-    parameters: {} as any,
+    parameters: GrepParams,
 
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       const { command, args } = rgAvailable ? buildGrepRgArgs(params) : buildGrepSystemArgs(params);
@@ -184,7 +213,7 @@ export default function (pi: ExtensionAPI) {
       ? "Search for files by glob pattern (uses fd-find). Respects .gitignore. Returns matching file paths relative to the search directory. Output truncated to 1000 results or 50KB."
       : "Search for files by glob pattern. Respects .gitignore. Returns matching file paths relative to the search directory. Output truncated to 1000 results or 50KB.",
 
-    parameters: {} as any,
+    parameters: FindParams,
 
     async execute(_toolCallId, params, signal, _onUpdate, ctx) {
       const { command, args } = fdAvailable ? buildFindFdArgs(params) : buildFindSystemArgs(params);
