@@ -534,6 +534,30 @@ export default function (pi: ExtensionAPI) {
     }
   }
 
+  // ── Inject permission mode into agent context ────────────────────────
+
+  pi.on("before_agent_start", async (event) => {
+    const bwrapOk = checkBwrap();
+    const sandboxStatus =
+      currentMode === "sandbox"
+        ? sandboxActive
+          ? "active (bwrap)"
+          : bwrapOk
+            ? "inactive"
+            : "bwrap missing"
+        : "inactive";
+    return {
+      systemPrompt:
+        event.systemPrompt +
+        `\n\n<permissions>\n` +
+        `Mode: ${currentMode} (sandbox ${sandboxStatus})\n` +
+        `Denied paths: ${sandboxConfig.deniedPaths.filter((p) => existsSync(p)).length} active\n` +
+        `Write protected: ${sandboxConfig.writeProtected.join(", ")}\n` +
+        `ExecPolicy: ${currentPolicy.rules.length} rules, ${currentPolicy.bannedPrefixes.length} banned\n` +
+        `</permissions>\n`,
+    };
+  });
+
   // ── Override bash tool ────────────────────────────────────────────────
 
   pi.registerTool({
@@ -620,6 +644,24 @@ export default function (pi: ExtensionAPI) {
             truncated: false,
           },
         };
+      }
+
+      // Check for writes to protected paths (shell redirects to .env etc.)
+      const writeTargetMatch = command.match(/[>]\s*(\S+)/g);
+      if (writeTargetMatch) {
+        for (const m of writeTargetMatch) {
+          const target = m.replace(/^[>]+\s*/, "");
+          if (isWriteProtected(target, sandboxConfig.writeProtected)) {
+            return {
+              result: {
+                output: `Auto-review: blocked — write to protected path "${target}".`,
+                exitCode: 1,
+                cancelled: false,
+                truncated: false,
+              },
+            };
+          }
+        }
       }
       // prompt in interactive mode and allow/null: fall through to native execution
     }
@@ -898,8 +940,52 @@ export default function (pi: ExtensionAPI) {
   // ── /permissions command ───────────────────────────────────────────────
 
   pi.registerCommand("permissions", {
-    description: "Switch permission mode: sandbox (default), auto-review, or full-access",
+    description:
+      "Switch permission mode or check status (usage: /permissions [sandbox|auto-review|full-access|--status])",
     handler: async (_args, ctx) => {
+      const arg = (_args || "").trim();
+
+      // --status: show current mode without switching
+      if (arg === "--status" || arg === "status" || arg === "show") {
+        const bwrapOk = checkBwrap();
+        const lines = [
+          `${MODE_EMOJI[currentMode]} Mode: ${currentMode}`,
+          `Sandbox: ${sandboxActive ? (bwrapOk ? "🔒 active (bwrap)" : "⚠️ active (bwrap missing)") : "❌ inactive"}`,
+          `bwrap: ${bwrapOk ? "✅ available" : "❌ not found"}`,
+          `Platform: ${process.platform}`,
+          `Config: enabled=${sandboxConfig.enabled}, writable=${sandboxConfig.writablePaths.length}, denied=${sandboxConfig.deniedPaths.length}`,
+          `ExecPolicy: ${currentPolicy.rules.length} rules, ${currentPolicy.bannedPrefixes.length} banned`,
+        ];
+        ctx.ui.notify(lines.join("\n"), "info");
+        return;
+      }
+
+      // Direct switch: /permissions <mode>
+      if (arg === "sandbox" || arg === "auto-review" || arg === "full-access") {
+        const newMode = arg as PermissionMode;
+        if (newMode === currentMode) {
+          ctx.ui.notify(`Already in ${newMode} mode`, "info");
+          return;
+        }
+        if (newMode === "full-access") {
+          const confirmed = await ctx.ui.confirm(
+            "⚠️ Full Access",
+            "This removes all restrictions. Commands will run with full system access. Continue?",
+          );
+          if (!confirmed) return;
+        }
+        if (newMode === "sandbox" && !checkBwrap()) {
+          ctx.ui.notify(
+            "bwrap not found. Install bubblewrap: sudo apt install bubblewrap",
+            "error",
+          );
+          return;
+        }
+        applyMode(newMode, "user-command", ctx);
+        return;
+      }
+
+      // Interactive mode picker
       const choice = await ctx.ui.select(
         `Select permission level (current: ${MODE_EMOJI[currentMode]} ${currentMode}):`,
         ["sandbox", "auto-review", "full-access"],
