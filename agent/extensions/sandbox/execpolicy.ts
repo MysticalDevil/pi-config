@@ -41,6 +41,7 @@ export interface RuleDef {
   pattern: (string | string[])[];
   decision?: Decision; // defaults to "allow"
   justification?: string;
+  excludePathPrefix?: string; // if any token starts with this, rule is skipped
 }
 
 export interface PolicyFile {
@@ -142,6 +143,15 @@ function matchRule(tokens: string[], rule: RuleDef): { matched: boolean; prefix:
   if (rule.pattern.length === 0) return { matched: false, prefix: [] };
   if (tokens.length < rule.pattern.length) return { matched: false, prefix: [] };
 
+  // Skip rule if any token starts with the excluded path prefix
+  if (rule.excludePathPrefix) {
+    for (const t of tokens) {
+      if (t.startsWith(rule.excludePathPrefix)) {
+        return { matched: false, prefix: [] };
+      }
+    }
+  }
+
   for (let i = 0; i < rule.pattern.length; i++) {
     if (!tokenMatches(tokens[i], rule.pattern[i])) {
       return { matched: false, prefix: [] };
@@ -240,6 +250,7 @@ const DEFAULT_RULES: PolicyFile = {
       pattern: ["rm", ["-rf", "-r", "--recursive"]],
       decision: "prompt",
       justification: "Recursive delete — check before proceeding",
+      excludePathPrefix: "/tmp/",
     },
     {
       pattern: ["sudo"],

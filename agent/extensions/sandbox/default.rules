@@ -3,7 +3,8 @@
     {
       "pattern": ["rm", ["-rf", "-r", "--recursive"]],
       "decision": "prompt",
-      "justification": "Recursive delete — check before proceeding"
+      "justification": "Recursive delete — check before proceeding",
+      "excludePathPrefix": "/tmp/"
     },
     {
       "pattern": ["sudo"],
