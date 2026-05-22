@@ -250,8 +250,7 @@ function buildBwrapArgs(command: string, cwd: string, config: SandboxConfig): st
 
 /**
  * Ensure an empty directory exists for bind-mount hiding.
- * We do this OUTSIDE the sandbox via a minimal execSync so the tmpfs
- * in the sandbox doesn't interfere.
+ * Uses fs.rmSync + fs.mkdirSync directly (no shell).
  */
 function ensureEmptyDir(path: string) {
   rmSync(path, { recursive: true, force: true });
