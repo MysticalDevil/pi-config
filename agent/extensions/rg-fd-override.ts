@@ -129,8 +129,8 @@ function buildFindSystemArgs(params: Record<string, unknown>): { command: string
   const pattern = (params.pattern as string) ?? "*";
   const searchPath = (params.path as string) ?? ".";
 
-  // Use -path + -name fallback for basic glob support
-  const args: string[] = [searchPath, "-type", "f", "-name", pattern];
+  const globPattern = `*/${pattern}`;
+  const args: string[] = [searchPath, "-type", "f", "-path", globPattern];
 
   return { command: "find", args };
 }
