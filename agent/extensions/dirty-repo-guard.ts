@@ -5,18 +5,30 @@
  * Useful to ensure work is committed before switching context.
  */
 
+import { execSync } from "node:child_process";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
+
+function isGitRepo(cwd: string): boolean {
+  try {
+    execSync("git rev-parse --git-dir", { cwd, stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 async function checkDirtyRepo(
   pi: ExtensionAPI,
   ctx: ExtensionContext,
   action: string,
 ): Promise<{ cancel: boolean } | undefined> {
+  // Silently skip if not a git repo
+  if (!isGitRepo(ctx.cwd)) return;
+
   // Check for uncommitted changes
   const { stdout, code } = await pi.exec("git", ["status", "--porcelain"]);
 
   if (code !== 0) {
-    // Not a git repo, allow the action
     return;
   }
 

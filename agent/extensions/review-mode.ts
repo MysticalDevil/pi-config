@@ -21,12 +21,22 @@
  *   Ctrl+Alt+R             — quick review toggle
  */
 
+import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Key } from "@earendil-works/pi-tui";
 
-import { parseStatusLine } from "./shared";
+import { parseStatusLine } from "./lib/shared";
+
+function isGitRepo(cwd: string): boolean {
+  try {
+    execSync("git rev-parse --git-dir", { cwd, stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 interface FileChange {
   file: string;
@@ -83,6 +93,8 @@ export default function (pi: ExtensionAPI) {
   }
 
   async function getChanges(cwd: string): Promise<FileChange[]> {
+    if (!isGitRepo(cwd)) return [];
+
     const { stdout, code } = await pi.exec(
       "git",
       ["status", "--porcelain=v1", "--untracked-files=all"],

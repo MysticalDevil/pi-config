@@ -14,7 +14,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
 const POLL_INTERVAL = 3000;
 
-import { parseStatusLine } from "./shared";
+import { parseStatusLine } from "./lib/shared";
 
 function makeBaseline(cwd: string): Map<string, string | null> {
   const map = new Map<string, string | null>();
