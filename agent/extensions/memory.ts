@@ -24,6 +24,7 @@ import { homedir } from "node:os";
 import * as path from "node:path";
 import { Type } from "typebox";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { Text } from "@earendil-works/pi-tui";
 
 interface Memory {
   id: string;
@@ -234,7 +235,7 @@ export default function (pi: ExtensionAPI) {
     renderCall(args, theme, _context) {
       let text = theme.fg("toolTitle", theme.bold("memory ")) + theme.fg("muted", args.action);
       if (args.text) text += ` ${theme.fg("dim", `"${args.text}"`)}`;
-      return { type: "text", text } as any;
+      return new Text(text, 0, 0);
     },
   });
 
