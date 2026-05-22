@@ -634,7 +634,7 @@ export default function (pi: ExtensionAPI) {
       if (evaluation.decision === "prompt") {
         // Auto-review: guardian makes the final call for user commands too
         try {
-          const gr = await guardianReview(command, ctx.cwd, 8000);
+          const gr = await guardianReview(command, ctx.cwd, 30000);
           if (gr.decision === "allow") {
             ctx.ui.notify(`✅ Auto-approved by guardian: ${gr.reason}`, "warning");
             // fall through to execute
@@ -775,7 +775,7 @@ export default function (pi: ExtensionAPI) {
         // auto-review: guardian makes the final call, no user prompt
         let guardianAdvice = "";
         try {
-          const gr = await guardianReview(command, ctx.cwd, 8000);
+          const gr = await guardianReview(command, ctx.cwd, 30000);
           if (gr.decision === "allow") {
             ctx.ui.notify(`✅ Auto-approved by guardian: ${gr.reason}`, "warning");
             // fall through to execute
