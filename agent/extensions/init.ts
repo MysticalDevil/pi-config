@@ -493,6 +493,12 @@ export default function (pi: ExtensionAPI) {
 
       // Check if already exists
       if (!force && !preview && fs.existsSync(agentsPath)) {
+        if (!ctx.hasUI) {
+          console.error(
+            "AGENTS.md already exists, use --force to overwrite in non-interactive mode",
+          );
+          return;
+        }
         const choice = await ctx.ui.select("AGENTS.md already exists. Overwrite?", [
           "Yes, overwrite",
           "Preview only",
