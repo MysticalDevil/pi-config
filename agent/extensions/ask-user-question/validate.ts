@@ -8,8 +8,13 @@ import { type QuestionParams, RESERVED_LABELS, MAX_QUESTIONS } from "./types";
 
 interface Validation {
   ok: boolean;
-  error?: "no_questions" | "empty_options" | "too_many_questions"
-    | "duplicate_question" | "duplicate_option_label" | "reserved_label";
+  error?:
+    | "no_questions"
+    | "empty_options"
+    | "too_many_questions"
+    | "duplicate_question"
+    | "duplicate_option_label"
+    | "reserved_label";
   message?: string;
 }
 
@@ -18,7 +23,11 @@ export function validateQuestionnaire(params: QuestionParams): Validation {
     return { ok: false, error: "no_questions", message: "No questions provided" };
   }
   if (params.questions.length > MAX_QUESTIONS) {
-    return { ok: false, error: "too_many_questions", message: `At most ${MAX_QUESTIONS} questions allowed` };
+    return {
+      ok: false,
+      error: "too_many_questions",
+      message: `At most ${MAX_QUESTIONS} questions allowed`,
+    };
   }
 
   const seenQuestions = new Set<string>();
@@ -28,13 +37,21 @@ export function validateQuestionnaire(params: QuestionParams): Validation {
     // Duplicate question text
     const qKey = q.question.trim().toLowerCase();
     if (seenQuestions.has(qKey)) {
-      return { ok: false, error: "duplicate_question", message: `Duplicate question at index ${qi}` };
+      return {
+        ok: false,
+        error: "duplicate_question",
+        message: `Duplicate question at index ${qi}`,
+      };
     }
     seenQuestions.add(qKey);
 
     // Empty options
     if (!q.options || q.options.length < 2) {
-      return { ok: false, error: "empty_options", message: `Question ${qi} has fewer than 2 options` };
+      return {
+        ok: false,
+        error: "empty_options",
+        message: `Question ${qi} has fewer than 2 options`,
+      };
     }
 
     // Duplicate or reserved option labels
@@ -42,10 +59,18 @@ export function validateQuestionnaire(params: QuestionParams): Validation {
     for (const opt of q.options) {
       const label = opt.label.trim();
       if (seenLabels.has(label)) {
-        return { ok: false, error: "duplicate_option_label", message: `Duplicate label "${label}" in question ${qi}` };
+        return {
+          ok: false,
+          error: "duplicate_option_label",
+          message: `Duplicate label "${label}" in question ${qi}`,
+        };
       }
       if (RESERVED_LABELS.has(label)) {
-        return { ok: false, error: "reserved_label", message: `Reserved label "${label}" in question ${qi}` };
+        return {
+          ok: false,
+          error: "reserved_label",
+          message: `Reserved label "${label}" in question ${qi}`,
+        };
       }
       seenLabels.add(label);
     }

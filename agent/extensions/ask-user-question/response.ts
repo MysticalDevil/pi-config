@@ -20,13 +20,19 @@ export function formatAnswer(answer: QuestionAnswer): string {
   }
 }
 
-export function buildResponse(
-  result: QuestionnaireResult,
-): { content: Array<{ type: "text"; text: string }>; details: Record<string, unknown> } {
+export function buildResponse(result: QuestionnaireResult): {
+  content: Array<{ type: "text"; text: string }>;
+  details: Record<string, unknown>;
+} {
   if (result.cancelled) {
     if (result.error) {
       return {
-        content: [{ type: "text", text: `Error: ${result.error} - ${result.answers.length ? "answered " + result.answers.length + " questions" : "no answers"}` }],
+        content: [
+          {
+            type: "text",
+            text: `Error: ${result.error} - ${result.answers.length ? "answered " + result.answers.length + " questions" : "no answers"}`,
+          },
+        ],
         details: { answers: result.answers, cancelled: true, error: result.error },
       };
     }
@@ -36,17 +42,26 @@ export function buildResponse(
     };
   }
 
-  const text = result.answers.length === 0
-    ? "No answers provided."
-    : result.answers.map(formatAnswer).join("\n\n");
+  const text =
+    result.answers.length === 0
+      ? "No answers provided."
+      : result.answers.map(formatAnswer).join("\n\n");
 
   return {
-    content: [{ type: "text", text: `User has answered your questions:\n\n${text}\n\nYou can now continue with the user's answers in mind.` }],
+    content: [
+      {
+        type: "text",
+        text: `User has answered your questions:\n\n${text}\n\nYou can now continue with the user's answers in mind.`,
+      },
+    ],
     details: { answers: result.answers, cancelled: false },
   };
 }
 
-export function buildErrorResult(message: string, partial: QuestionnaireResult): {
+export function buildErrorResult(
+  message: string,
+  partial: QuestionnaireResult,
+): {
   content: Array<{ type: "text"; text: string }>;
   details: Record<string, unknown>;
 } {

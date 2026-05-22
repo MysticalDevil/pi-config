@@ -123,9 +123,19 @@ export class BtwOverlayController {
     if (this.history.length > 0) footerParts.push(FOOTER_CLEAR);
     footerParts.push(FOOTER_DISMISS);
     const footer =
-      SIDE_PAD + truncateToWidth(this.theme.fg("dim", footerParts.join(FOOTER_SEP)), footerAvail, "…", false);
+      SIDE_PAD +
+      truncateToWidth(this.theme.fg("dim", footerParts.join(FOOTER_SEP)), footerAvail, "…", false);
 
-    const natural: string[] = [banner, "", ...historyLines, echoLine, "", ...answerLines, "", footer];
+    const natural: string[] = [
+      banner,
+      "",
+      ...historyLines,
+      echoLine,
+      "",
+      ...answerLines,
+      "",
+      footer,
+    ];
 
     const termRows = (this.tui.terminal as { rows?: number }).rows ?? 24;
     const maxRows = Math.max(4, Math.floor(termRows * BTW_MAX_HEIGHT_RATIO));

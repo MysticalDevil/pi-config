@@ -9,7 +9,13 @@
  * Fix over rpiv-btw: DSML stripping in btw-ui.ts setAnswer().
  */
 
-import { completeSimple, type AssistantMessage, type Message, type StopReason, type UserMessage } from "@earendil-works/pi-ai";
+import {
+  completeSimple,
+  type AssistantMessage,
+  type Message,
+  type StopReason,
+  type UserMessage,
+} from "@earendil-works/pi-ai";
 import {
   convertToLlm,
   type ExtensionAPI,
@@ -74,12 +80,17 @@ function getSessionFile(ctx: ExtensionContext): string {
 function getSessionHistory(ctx: ExtensionContext): Array<{ question: string; answer: string }> {
   const turns = getState().histories.get(getSessionFile(ctx)) ?? [];
   return turns.map((t) => ({
-    question: typeof t.userMessage.content === "string"
-      ? t.userMessage.content
-      : t.userMessage.content.filter((c): c is { type: "text"; text: string } => c.type === "text").map((c) => c.text).join("\n"),
+    question:
+      typeof t.userMessage.content === "string"
+        ? t.userMessage.content
+        : t.userMessage.content
+            .filter((c): c is { type: "text"; text: string } => c.type === "text")
+            .map((c) => c.text)
+            .join("\n"),
     answer: t.assistantMessage.content
       .filter((c): c is { type: "text"; text: string } => c.type === "text")
-      .map((c) => c.text).join("\n"),
+      .map((c) => c.text)
+      .join("\n"),
   }));
 }
 
@@ -87,7 +98,10 @@ function pushSessionTurn(ctx: ExtensionContext, turn: BtwTurn): void {
   const key = getSessionFile(ctx);
   const state = getState();
   let turns = state.histories.get(key);
-  if (!turns) { turns = []; state.histories.set(key, turns); }
+  if (!turns) {
+    turns = [];
+    state.histories.set(key, turns);
+  }
   turns.push(turn);
 }
 
@@ -159,7 +173,11 @@ export async function executeBtw(
       return { ok: false, aborted: true };
     }
     if (response.stopReason === "error") {
-      return { ok: false, error: response.errorMessage ?? "unknown", stopReason: response.stopReason };
+      return {
+        ok: false,
+        error: response.errorMessage ?? "unknown",
+        stopReason: response.stopReason,
+      };
     }
 
     const answerText = response.content
@@ -170,7 +188,13 @@ export async function executeBtw(
 
     if (!answerText) return { ok: false, error: "Empty response" };
 
-    return { ok: true, answer: answerText, userMessage, assistantMessage: response, stopReason: response.stopReason };
+    return {
+      ok: true,
+      answer: answerText,
+      userMessage,
+      assistantMessage: response,
+      stopReason: response.stopReason,
+    };
   } catch (err) {
     if (controller.signal.aborted) return { ok: false, aborted: true };
     return { ok: false, error: String(err) };
@@ -202,10 +226,19 @@ export function registerBtwCommand(pi: ExtensionAPI): void {
   pi.registerCommand("btw", {
     description: "Ask a side question without polluting the main conversation",
     handler: async (args, ctx) => {
-      if (!ctx.hasUI) { ctx.ui.notify("/btw requires interactive mode", "error"); return; }
+      if (!ctx.hasUI) {
+        ctx.ui.notify("/btw requires interactive mode", "error");
+        return;
+      }
       const question = args.trim();
-      if (!question) { ctx.ui.notify("Usage: /btw <question>", "warning"); return; }
-      if (!ctx.model) { ctx.ui.notify("/btw requires an active model", "error"); return; }
+      if (!question) {
+        ctx.ui.notify("Usage: /btw <question>", "warning");
+        return;
+      }
+      if (!ctx.model) {
+        ctx.ui.notify("/btw requires an active model", "error");
+        return;
+      }
 
       const controller = new AbortController();
 

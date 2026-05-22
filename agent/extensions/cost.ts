@@ -255,9 +255,7 @@ export default function (pi: ExtensionAPI) {
             }
 
             const visible = lines.slice(scrollOffset, scrollOffset + availHeight);
-            const pct = maxScroll > 0
-              ? `${Math.round((scrollOffset / maxScroll) * 100)}%`
-              : "ALL";
+            const pct = maxScroll > 0 ? `${Math.round((scrollOffset / maxScroll) * 100)}%` : "ALL";
             return [
               ...visible,
               _theme.fg("dim", `── ${pct} — ↑↓ PgUp PgDn Home End — Esc/Enter to close`),
@@ -270,32 +268,38 @@ export default function (pi: ExtensionAPI) {
               return;
             }
             // Scroll controls
-            if (data === "\x1b[A" || data === "k") { // Up
+            if (data === "\x1b[A" || data === "k") {
+              // Up
               scrollOffset = Math.max(0, scrollOffset - 1);
               tui.requestRender();
               return;
             }
-            if (data === "\x1b[B" || data === "j") { // Down
+            if (data === "\x1b[B" || data === "j") {
+              // Down
               scrollOffset++;
               tui.requestRender();
               return;
             }
-            if (data === "\x1b[5~") { // PageUp
+            if (data === "\x1b[5~") {
+              // PageUp
               scrollOffset = Math.max(0, scrollOffset - 10);
               tui.requestRender();
               return;
             }
-            if (data === "\x1b[6~") { // PageDown
+            if (data === "\x1b[6~") {
+              // PageDown
               scrollOffset += 10;
               tui.requestRender();
               return;
             }
-            if (data === "\x1b[H" || data === "g") { // Home
+            if (data === "\x1b[H" || data === "g") {
+              // Home
               scrollOffset = 0;
               tui.requestRender();
               return;
             }
-            if (data === "\x1b[F" || data === "G") { // End
+            if (data === "\x1b[F" || data === "G") {
+              // End
               scrollOffset = Infinity; // clamped in render
               tui.requestRender();
               return;

@@ -7,7 +7,7 @@
 
 import { truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 
-const ANSI_SGR_RE = /\x1b\[[0-9;]*m/g;
+const ANSI_SGR_RE = new RegExp(String.fromCharCode(0x1b) + "\\[[0-9;]*m", "g");
 const FENCE_MARKER_RE = /^`{3}/;
 
 /** Top + bottom border rows consumed by `renderBorderedBox`. */

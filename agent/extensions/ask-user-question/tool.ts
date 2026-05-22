@@ -8,7 +8,13 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { QuestionnaireDialog } from "./dialog";
 import { buildErrorResult, buildResponse } from "./response";
-import { type QuestionParams, QuestionParamsSchema, MAX_OPTIONS, MIN_OPTIONS, MAX_QUESTIONS } from "./types";
+import {
+  type QuestionParams,
+  QuestionParamsSchema,
+  MAX_OPTIONS,
+  MIN_OPTIONS,
+  MAX_QUESTIONS,
+} from "./types";
 import { validateQuestionnaire } from "./validate";
 
 export function registerAskUserQuestionTool(pi: ExtensionAPI): void {
@@ -46,12 +52,20 @@ Preview content is rendered as markdown in a monospace box. Multi-line text with
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
       const typed = params as unknown as QuestionParams;
       if (!ctx.hasUI) {
-        return buildErrorResult("UI not available (non-interactive mode)", { answers: [], cancelled: true, error: "no_ui" });
+        return buildErrorResult("UI not available (non-interactive mode)", {
+          answers: [],
+          cancelled: true,
+          error: "no_ui",
+        });
       }
 
       const validation = validateQuestionnaire(typed);
       if (!validation.ok) {
-        return buildErrorResult(validation.message!, { answers: [], cancelled: true, error: validation.error });
+        return buildErrorResult(validation.message!, {
+          answers: [],
+          cancelled: true,
+          error: validation.error,
+        });
       }
 
       const result = await ctx.ui.custom<{ answers: unknown[]; cancelled: boolean }>(
@@ -70,24 +84,48 @@ Preview content is rendered as markdown in a monospace box. Multi-line text with
     },
 
     renderCall(args, theme, _context) {
-      const qs = Array.isArray(args.questions) ? args.questions as Array<{ header?: string }> : [];
-      if (qs.length === 0) return new Text(theme.fg("toolTitle", theme.bold("ask ")) + theme.fg("error", "(no questions)"), 0, 0);
+      const qs = Array.isArray(args.questions)
+        ? (args.questions as Array<{ header?: string }>)
+        : [];
+      if (qs.length === 0)
+        return new Text(
+          theme.fg("toolTitle", theme.bold("ask ")) + theme.fg("error", "(no questions)"),
+          0,
+          0,
+        );
       const headers = qs.map((q) => q.header || "?").join(", ");
-      return new Text(theme.fg("toolTitle", theme.bold("ask ")) + theme.fg("accent", headers), 0, 0);
+      return new Text(
+        theme.fg("toolTitle", theme.bold("ask ")) + theme.fg("accent", headers),
+        0,
+        0,
+      );
     },
 
     renderResult(result, _options, theme, _context) {
-      const details = result.details as { answers?: Array<{ kind: string; question: string; answer: string | null }>; cancelled?: boolean; error?: string } | undefined;
+      const details = result.details as
+        | {
+            answers?: Array<{ kind: string; question: string; answer: string | null }>;
+            cancelled?: boolean;
+            error?: string;
+          }
+        | undefined;
       if (!details) return new Text(theme.fg("muted", "…"), 0, 0);
       if (details.error) return new Text(theme.fg("error", `Error: ${details.error}`), 0, 0);
       if (details.cancelled) return new Text(theme.fg("warning", "Cancelled"), 0, 0);
       const answers = details.answers ?? [];
-      const summary = answers.map((a) => {
-        const icon = a.kind === "chat" ? "💬" : a.kind === "custom" ? "✏️" : a.kind === "multi" ? "☑" : "✓";
-        const q = a.question.length > 50 ? a.question.slice(0, 47) + "…" : a.question;
-        return `${icon} ${q} = ${a.answer ?? "(multi)"}`;
-      }).join("\n");
-      return new Text(theme.fg("success", `✓ ${answers.length} answered\n`) + theme.fg("muted", summary), 0, 0);
+      const summary = answers
+        .map((a) => {
+          const icon =
+            a.kind === "chat" ? "💬" : a.kind === "custom" ? "✏️" : a.kind === "multi" ? "☑" : "✓";
+          const q = a.question.length > 50 ? a.question.slice(0, 47) + "…" : a.question;
+          return `${icon} ${q} = ${a.answer ?? "(multi)"}`;
+        })
+        .join("\n");
+      return new Text(
+        theme.fg("success", `✓ ${answers.length} answered\n`) + theme.fg("muted", summary),
+        0,
+        0,
+      );
     },
   });
 }

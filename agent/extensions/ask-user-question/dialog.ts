@@ -9,7 +9,6 @@
 import { getMarkdownTheme, type Theme } from "@earendil-works/pi-coding-agent";
 import { matchesKey, truncateToWidth, visibleWidth } from "@earendil-works/pi-tui";
 import {
-  type OptionData,
   type QuestionAnswer,
   type QuestionData,
   type QuestionnaireResult,
@@ -212,15 +211,25 @@ export class QuestionnaireDialog {
 
     // Header
     lines.push("");
-    lines.push(truncateToWidth(`${pad}${th.fg("accent", th.bold(`[${q.header}]`))} ${th.fg("text", q.question)}`, width));
-    lines.push(truncateToWidth(`${pad}${th.fg("borderMuted", "─".repeat(Math.max(0, width - 4)))}`, width));
+    lines.push(
+      truncateToWidth(
+        `${pad}${th.fg("accent", th.bold(`[${q.header}]`))} ${th.fg("text", q.question)}`,
+        width,
+      ),
+    );
+    lines.push(
+      truncateToWidth(`${pad}${th.fg("borderMuted", "─".repeat(Math.max(0, width - 4)))}`, width),
+    );
     lines.push("");
 
     // Tab bar (multi-question)
     if (this.questions.length > 1) {
       const tabs = this.questions.map((tq, i) => {
-        const answered = this.state.selections.has(i) || this.state.customTexts.has(i) || this.state.chatAbandoned.has(i);
-        const marker = answered ? "✓" : (i === this.state.tabIndex ? "●" : "○");
+        const answered =
+          this.state.selections.has(i) ||
+          this.state.customTexts.has(i) ||
+          this.state.chatAbandoned.has(i);
+        const marker = answered ? "✓" : i === this.state.tabIndex ? "●" : "○";
         return i === this.state.tabIndex
           ? th.fg("accent", `${marker} ${tq.header}`)
           : th.fg("dim", `${marker} ${tq.header}`);
@@ -232,7 +241,9 @@ export class QuestionnaireDialog {
     // Option list + preview
     if (isSideBySide && previewBlock) {
       const { leftWidth, rightWidth } = columnWidths(width, this.adaptiveLeft);
-      lines.push(...this.renderSideBySide(items, q, leftWidth, rightWidth, mode, previewBlock, width, th));
+      lines.push(
+        ...this.renderSideBySide(items, q, leftWidth, rightWidth, mode, previewBlock, width, th),
+      );
     } else if (hasPreview && !q.multiSelect && previewBlock) {
       // Stacked: options on top, preview block below
       lines.push(...this.renderSimpleList(items, q, width, th));
@@ -291,7 +302,10 @@ export class QuestionnaireDialog {
     if (idx >= q.options.length) return;
     const label = q.options[idx].label;
     let pending = this.state.multiSelectPending.get(qi);
-    if (!pending) { pending = new Set(); this.state.multiSelectPending.set(qi, pending); }
+    if (!pending) {
+      pending = new Set();
+      this.state.multiSelectPending.set(qi, pending);
+    }
     if (pending.has(label)) pending.delete(label);
     else pending.add(label);
   }
@@ -306,8 +320,11 @@ export class QuestionnaireDialog {
   }
 
   private advanceOrSubmit(): void {
-    const remaining = this.questions.filter((_, i) =>
-      !this.state.selections.has(i) && !this.state.customTexts.has(i) && !this.state.chatAbandoned.has(i),
+    const remaining = this.questions.filter(
+      (_, i) =>
+        !this.state.selections.has(i) &&
+        !this.state.customTexts.has(i) &&
+        !this.state.chatAbandoned.has(i),
     );
     if (remaining.length === 0) {
       this.done({ answers: this.collectAnswers(), cancelled: false });
@@ -315,7 +332,11 @@ export class QuestionnaireDialog {
     }
     for (let i = 1; i <= this.questions.length; i++) {
       const ni = (this.state.tabIndex + i) % this.questions.length;
-      if (!this.state.selections.has(ni) && !this.state.customTexts.has(ni) && !this.state.chatAbandoned.has(ni)) {
+      if (
+        !this.state.selections.has(ni) &&
+        !this.state.customTexts.has(ni) &&
+        !this.state.chatAbandoned.has(ni)
+      ) {
         this.state.tabIndex = ni;
         this.state.optionIndex = 0;
         return;
@@ -333,11 +354,22 @@ export class QuestionnaireDialog {
       const chat = this.state.chatAbandoned.has(i);
 
       if (chat) {
-        answers.push({ questionIndex: i, question: q.question, kind: "chat", answer: "Chat about this" });
+        answers.push({
+          questionIndex: i,
+          question: q.question,
+          kind: "chat",
+          answer: "Chat about this",
+        });
       } else if (custom) {
         answers.push({ questionIndex: i, question: q.question, kind: "custom", answer: custom });
       } else if (sel && q.multiSelect) {
-        answers.push({ questionIndex: i, question: q.question, kind: "multi", answer: null, selected: sel });
+        answers.push({
+          questionIndex: i,
+          question: q.question,
+          kind: "multi",
+          answer: null,
+          selected: sel,
+        });
       } else if (sel && sel.length === 1) {
         const opt = q.options.find((o) => o.label === sel[0]);
         answers.push({
@@ -364,12 +396,7 @@ export class QuestionnaireDialog {
     return parts.join("   ");
   }
 
-  private renderSimpleList(
-    items: string[],
-    q: QuestionData,
-    width: number,
-    th: Theme,
-  ): string[] {
+  private renderSimpleList(items: string[], q: QuestionData, width: number, th: Theme): string[] {
     const lines: string[] = [];
     const pad = "    ";
     for (let i = 0; i < items.length; i++) {
@@ -424,10 +451,13 @@ export class QuestionnaireDialog {
       const sel = this.state.selections.get(this.state.tabIndex);
       const checked = sel?.includes(label);
       const check = q.multiSelect ? (checked ? th.fg("success", "☑ ") : th.fg("dim", "☐ ")) : "";
-      let text = isFocused ? th.fg("accent", th.bold(label))
-        : label === SENTINEL_CHAT || label === SENTINEL_OTHER ? th.fg("dim", label)
-        : label === SENTINEL_NEXT ? th.fg("accent", label)
-        : label;
+      let text = isFocused
+        ? th.fg("accent", th.bold(label))
+        : label === SENTINEL_CHAT || label === SENTINEL_OTHER
+          ? th.fg("dim", label)
+          : label === SENTINEL_NEXT
+            ? th.fg("accent", label)
+            : label;
       leftLines.push(truncateToWidth(`${pad}${prefix}${check}${text}`, leftWidth));
     }
 

@@ -376,12 +376,22 @@ function generateAgentsMd(info: ProjectInfo): string {
   lines.push("");
 
   // Determine appropriate test command based on detected tooling
-  const testCmd = info.packageManager === "cargo" ? "cargo test"
-    : info.packageManager === "go modules" ? "go test"
-    : info.packageManager === "zig build" ? "zig build test"
-    : info.packageManager === "pip" || info.packageManager === "poetry" || info.packageManager === "uv"
-      ? (info.packageManager === "poetry" ? "poetry run pytest" : info.packageManager === "uv" ? "uv run pytest" : "pytest")
-    : `${info.packageManager} test`;
+  const testCmd =
+    info.packageManager === "cargo"
+      ? "cargo test"
+      : info.packageManager === "go modules"
+        ? "go test"
+        : info.packageManager === "zig build"
+          ? "zig build test"
+          : info.packageManager === "pip" ||
+              info.packageManager === "poetry" ||
+              info.packageManager === "uv"
+            ? info.packageManager === "poetry"
+              ? "poetry run pytest"
+              : info.packageManager === "uv"
+                ? "uv run pytest"
+                : "pytest"
+            : `${info.packageManager} test`;
 
   lines.push(`- Run \`${testCmd}\` (or equivalent) before committing`);
   lines.push("- Keep commits small and focused");

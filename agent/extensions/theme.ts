@@ -41,7 +41,9 @@ function getThemeNames(cwd: string): ThemeMeta[] {
     for (const entry of fs.readdirSync(globalDir)) {
       if (entry.endsWith(".json")) {
         try {
-          const content = JSON.parse(fs.readFileSync(path.join(globalDir, entry), "utf-8")) as ThemeData;
+          const content = JSON.parse(
+            fs.readFileSync(path.join(globalDir, entry), "utf-8"),
+          ) as ThemeData;
           if (content.name) {
             const bg = content.colors?.toolPendingBg || content.vars?.bg || "";
             const isDark = isDarkColor(bg);
@@ -60,7 +62,9 @@ function getThemeNames(cwd: string): ThemeMeta[] {
     for (const entry of fs.readdirSync(projectDir)) {
       if (entry.endsWith(".json")) {
         try {
-          const content = JSON.parse(fs.readFileSync(path.join(projectDir, entry), "utf-8")) as ThemeData;
+          const content = JSON.parse(
+            fs.readFileSync(path.join(projectDir, entry), "utf-8"),
+          ) as ThemeData;
           if (content.name) {
             const name = content.name + " (project)";
             themes.push({ file: entry.replace(".json", ""), name, isDark: false });
@@ -89,13 +93,7 @@ function isDarkColor(hex: string): boolean {
 
 function getSwatchColors(themeFile: string): Record<string, string> | null {
   // Try global first
-  const globalPath = path.join(
-    homedir(),
-    ".pi",
-    "agent",
-    "themes",
-    `${themeFile}.json`,
-  );
+  const globalPath = path.join(homedir(), ".pi", "agent", "themes", `${themeFile}.json`);
   let themeData: ThemeData | null = null;
 
   if (fs.existsSync(globalPath)) {

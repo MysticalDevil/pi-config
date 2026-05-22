@@ -105,7 +105,11 @@ function createEmptyState(): AppState {
   return { tasks: [], nextId: 1 };
 }
 
-function applyMutation(state: AppState, action: TaskAction, params: Record<string, unknown>): {
+function applyMutation(
+  state: AppState,
+  action: TaskAction,
+  params: Record<string, unknown>,
+): {
   state: AppState;
   error?: string;
   op?: Record<string, unknown>;
@@ -173,7 +177,8 @@ function applyMutation(state: AppState, action: TaskAction, params: Record<strin
           if (dep === current.id) return { state, error: `cannot block #${id} on itself` };
           const depTask = state.tasks.find((t) => t.id === dep);
           if (!depTask) return { state, error: `addBlockedBy: #${dep} not found` };
-          if (depTask.status === "deleted") return { state, error: `addBlockedBy: #${dep} is deleted` };
+          if (depTask.status === "deleted")
+            return { state, error: `addBlockedBy: #${dep} is deleted` };
           if (!newBlockedBy.includes(dep)) newBlockedBy.push(dep);
         }
         if (detectCycle(state.tasks, current.id, newBlockedBy)) {
@@ -182,15 +187,20 @@ function applyMutation(state: AppState, action: TaskAction, params: Record<strin
       }
 
       const updated: Task = { ...current, status: newStatus };
-      if (typeof params.subject === "string" && params.subject.trim()) updated.subject = params.subject.trim();
-      if (typeof params.description === "string") updated.description = params.description.trim() || undefined;
+      if (typeof params.subject === "string" && params.subject.trim())
+        updated.subject = params.subject.trim();
+      if (typeof params.description === "string")
+        updated.description = params.description.trim() || undefined;
       if (typeof params.owner === "string") updated.owner = params.owner.trim() || undefined;
       if (newBlockedBy.length) updated.blockedBy = newBlockedBy;
       else delete updated.blockedBy;
 
       const tasks = [...state.tasks];
       tasks[idx] = updated;
-      return { state: { tasks, nextId: state.nextId }, op: { kind: "update", id, fromStatus: current.status, toStatus: newStatus } };
+      return {
+        state: { tasks, nextId: state.nextId },
+        op: { kind: "update", id, fromStatus: current.status, toStatus: newStatus },
+      };
     }
 
     case "list":
@@ -209,10 +219,14 @@ function applyMutation(state: AppState, action: TaskAction, params: Record<strin
       if (id === undefined) return { state, error: "id required for delete" };
       const idx = state.tasks.findIndex((t) => t.id === id);
       if (idx === -1) return { state, error: `#${id} not found` };
-      if (state.tasks[idx].status === "deleted") return { state, error: `#${id} is already deleted` };
+      if (state.tasks[idx].status === "deleted")
+        return { state, error: `#${id} is already deleted` };
       const tasks = [...state.tasks];
       tasks[idx] = { ...tasks[idx], status: "deleted" };
-      return { state: { tasks, nextId: state.nextId }, op: { kind: "delete", id, subject: state.tasks[idx].subject } };
+      return {
+        state: { tasks, nextId: state.nextId },
+        op: { kind: "delete", id, subject: state.tasks[idx].subject },
+      };
     }
 
     case "clear": {
@@ -234,7 +248,14 @@ function isTaskStatus(s: string): s is TaskStatus {
 
 function formatTaskLine(t: Task, showId: boolean): string {
   const idStr = showId ? `#${t.id} ` : "";
-  const statusIcon = t.status === "completed" ? "✓" : t.status === "in_progress" ? "…" : t.status === "deleted" ? "✗" : "○";
+  const statusIcon =
+    t.status === "completed"
+      ? "✓"
+      : t.status === "in_progress"
+        ? "…"
+        : t.status === "deleted"
+          ? "✗"
+          : "○";
   if (t.blockedBy?.length) {
     return `${statusIcon} ${idStr}${t.subject} (blocked by: ${t.blockedBy.join(", ")})`;
   }
@@ -255,14 +276,20 @@ function formatDeleteResult(op: Record<string, unknown>): string {
 
 function formatListResult(state: AppState, params: Record<string, unknown>): string {
   const includeDeleted = params.includeDeleted === true;
-  const statusFilter = typeof params.status === "string" && isTaskStatus(params.status) ? params.status : undefined;
+  const statusFilter =
+    typeof params.status === "string" && isTaskStatus(params.status) ? params.status : undefined;
   let filtered = state.tasks;
   if (!includeDeleted) filtered = filtered.filter((t) => t.status !== "deleted");
   if (statusFilter) filtered = filtered.filter((t) => t.status === statusFilter);
 
   if (filtered.length === 0) return "No todos";
 
-  const grouped: Record<string, Task[]> = { pending: [], in_progress: [], completed: [], deleted: [] };
+  const grouped: Record<string, Task[]> = {
+    pending: [],
+    in_progress: [],
+    completed: [],
+    deleted: [],
+  };
   for (const t of filtered) grouped[t.status].push(t);
 
   const lines: string[] = [];
@@ -334,10 +361,16 @@ class TodoOverlay {
     // Always re-register to trigger a re-render with latest state.
     // The TUI widget only refreshes when setWidget is called, so a
     // no-op on an already-registered widget would show stale data.
-    ctx.ui.setWidget(WIDGET_KEY, (_tui, theme) => ({
-      render: (width: number) => this.renderWidget(state, theme, width),
-      invalidate: () => { this.registered = false; },
-    }), { placement: "aboveEditor" });
+    ctx.ui.setWidget(
+      WIDGET_KEY,
+      (_tui, theme) => ({
+        render: (width: number) => this.renderWidget(state, theme, width),
+        invalidate: () => {
+          this.registered = false;
+        },
+      }),
+      { placement: "aboveEditor" },
+    );
     this.registered = true;
   }
 
@@ -356,16 +389,25 @@ class TodoOverlay {
     for (let i = 0; i < maxItems; i++) {
       const t = visible[i];
       const conn = i === maxItems - 1 && maxItems === visible.length ? "└─" : "├─";
-      const icon = t.status === "completed" ? theme.fg("success", "✓")
-        : t.status === "in_progress" ? theme.fg("warning", "…")
-        : theme.fg("dim", "○");
+      const icon =
+        t.status === "completed"
+          ? theme.fg("success", "✓")
+          : t.status === "in_progress"
+            ? theme.fg("warning", "…")
+            : theme.fg("dim", "○");
       const subject = t.status === "completed" ? theme.fg("dim", t.subject) : t.subject;
-      const blockers = t.blockedBy?.length ? theme.fg("dim", ` (blocked by: ${t.blockedBy.join(",")})`) : "";
+      const blockers = t.blockedBy?.length
+        ? theme.fg("dim", ` (blocked by: ${t.blockedBy.join(",")})`)
+        : "";
       lines.push(truncate(`${theme.fg("dim", conn)} ${icon} ${subject}${blockers}`));
     }
 
     if (visible.length > maxItems) {
-      lines.push(truncate(`${theme.fg("dim", "└─")} ${theme.fg("dim", `+${visible.length - maxItems} more`)}`));
+      lines.push(
+        truncate(
+          `${theme.fg("dim", "└─")} ${theme.fg("dim", `+${visible.length - maxItems} more`)}`,
+        ),
+      );
     }
     return lines;
   }
@@ -419,15 +461,21 @@ class TodoListComponent {
         lines.push(truncateToWidth(`  ${th.fg("accent", label)} (${tasks.length})`, width));
         for (const t of tasks) {
           const icon =
-            t.status === "completed" ? th.fg("success", "✓")
-            : t.status === "in_progress" ? th.fg("warning", "…")
-            : t.status === "deleted" ? th.fg("error", "✗")
-            : th.fg("dim", "○");
+            t.status === "completed"
+              ? th.fg("success", "✓")
+              : t.status === "in_progress"
+                ? th.fg("warning", "…")
+                : t.status === "deleted"
+                  ? th.fg("error", "✗")
+                  : th.fg("dim", "○");
           const idStr = th.fg("accent", `#${t.id}`);
-          const text = t.status === "completed" || t.status === "deleted"
-            ? th.fg("dim", t.subject)
-            : th.fg("text", t.subject);
-          const blockers = t.blockedBy?.length ? th.fg("dim", ` (blocks: ${t.blockedBy.join(",")})`) : "";
+          const text =
+            t.status === "completed" || t.status === "deleted"
+              ? th.fg("dim", t.subject)
+              : th.fg("text", t.subject);
+          const blockers = t.blockedBy?.length
+            ? th.fg("dim", ` (blocks: ${t.blockedBy.join(",")})`)
+            : "";
           lines.push(truncateToWidth(`    ${icon} ${idStr} ${text}${blockers}`, width));
         }
         lines.push("");
@@ -546,7 +594,8 @@ export default function (pi: ExtensionAPI) {
     },
 
     renderCall(args, theme, _context) {
-      let text = theme.fg("toolTitle", theme.bold("todo ")) + theme.fg("muted", args.action as string);
+      let text =
+        theme.fg("toolTitle", theme.bold("todo ")) + theme.fg("muted", args.action as string);
       if (args.subject) text += ` ${theme.fg("dim", `"${args.subject}"`)}`;
       if (args.id !== undefined) text += ` ${theme.fg("accent", `#${args.id}`)}`;
       return new Text(text, 0, 0);
@@ -567,13 +616,17 @@ export default function (pi: ExtensionAPI) {
       const completed = tasks.filter((t) => t.status === "completed").length;
       const hasActive = tasks.some((t) => t.status === "in_progress");
 
-      let text = theme.fg("success", "✓ ") + theme.fg("muted", `${tasks.length} tasks, ${completed} done`);
+      let text =
+        theme.fg("success", "✓ ") + theme.fg("muted", `${tasks.length} tasks, ${completed} done`);
       if (hasActive) text += theme.fg("warning", ", active");
       if (expanded && tasks.length > 0) {
         for (const t of tasks) {
-          const icon = t.status === "completed" ? theme.fg("success", "  ✓")
-            : t.status === "in_progress" ? theme.fg("warning", "  …")
-            : theme.fg("dim", "  ○");
+          const icon =
+            t.status === "completed"
+              ? theme.fg("success", "  ✓")
+              : t.status === "in_progress"
+                ? theme.fg("warning", "  …")
+                : theme.fg("dim", "  ○");
           text += `\n${icon} ${theme.fg("accent", `#${t.id}`)} ${theme.fg("muted", t.subject)}`;
           if (t.blockedBy?.length) {
             text += theme.fg("dim", ` (blocks: ${t.blockedBy.join(",")})`);
