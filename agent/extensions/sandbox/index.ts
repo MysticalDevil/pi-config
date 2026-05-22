@@ -598,6 +598,32 @@ export default function (pi: ExtensionAPI) {
       }
     }
 
+    // auto-review: also evaluate user-bash commands
+    if (currentMode === "auto-review") {
+      const { evaluation, bannedBy } = evaluateCommand(command, currentPolicy);
+      if (bannedBy || evaluation.decision === "forbidden") {
+        return {
+          result: {
+            output: `Auto-review: blocked — ${bannedBy ? `banned prefix "${bannedBy.join(" ")}"` : `forbidden by policy`}`,
+            exitCode: 1,
+            cancelled: false,
+            truncated: false,
+          },
+        };
+      }
+      if (evaluation.decision === "prompt" && !ctx.hasUI) {
+        return {
+          result: {
+            output: "Auto-review: command requires human review but no UI available.",
+            exitCode: 1,
+            cancelled: false,
+            truncated: false,
+          },
+        };
+      }
+      // prompt in interactive mode and allow/null: fall through to native execution
+    }
+
     if (currentMode === "sandbox" && sandboxActive) {
       return { operations: createSandboxedBashOps(sandboxConfig) };
     }
@@ -689,6 +715,14 @@ export default function (pi: ExtensionAPI) {
       }
 
       if (evaluation.decision === "prompt") {
+        // Non-interactive mode: block requests that need human review
+        if (!ctx.hasUI) {
+          return {
+            block: true,
+            reason: `Auto-review: command requires human review but no UI available. Switch to full-access or run interactively.`,
+          };
+        }
+
         // Skip dialog if user already approved all for this turn
         if (turnApproved) {
           ctx.ui.notify(`✅ Auto-approved: ${command.slice(0, 80)}`, "info");
@@ -743,13 +777,14 @@ export default function (pi: ExtensionAPI) {
 
   // Also intercept write/edit to protect sensitive paths in sandbox mode
   pi.on("tool_call", async (event, ctx) => {
-    if (!ctx.hasUI) return;
     if (currentMode !== "sandbox") return;
 
     if (event.toolName === "write" || event.toolName === "edit") {
       const filepath = (event.input as { path?: string }).path ?? "";
       if (isWriteProtected(filepath, sandboxConfig.writeProtected)) {
-        ctx.ui.notify(`🔒 Sandbox: write to protected path blocked: ${filepath}`, "warning");
+        if (ctx.hasUI) {
+          ctx.ui.notify(`🔒 Sandbox: write to protected path blocked: ${filepath}`, "warning");
+        }
         return {
           block: true,
           reason: `Sandbox: write to protected path "${filepath}" is blocked`,
