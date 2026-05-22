@@ -374,7 +374,16 @@ function generateAgentsMd(info: ProjectInfo): string {
   lines.push("");
   lines.push("<!-- Add project-specific conventions here -->");
   lines.push("");
-  lines.push("- Run `npm test` (or equivalent) before committing");
+
+  // Determine appropriate test command based on detected tooling
+  const testCmd = info.packageManager === "cargo" ? "cargo test"
+    : info.packageManager === "go modules" ? "go test"
+    : info.packageManager === "zig build" ? "zig build test"
+    : info.packageManager === "pip" || info.packageManager === "poetry" || info.packageManager === "uv"
+      ? (info.packageManager === "poetry" ? "poetry run pytest" : info.packageManager === "uv" ? "uv run pytest" : "pytest")
+    : `${info.packageManager} test`;
+
+  lines.push(`- Run \`${testCmd}\` (or equivalent) before committing`);
   lines.push("- Keep commits small and focused");
   lines.push("- Write meaningful commit messages");
   lines.push("");
@@ -400,6 +409,47 @@ function generateAgentsMd(info: ProjectInfo): string {
       lines.push("yarn build            # Build for production");
       lines.push("yarn test             # Run tests");
       lines.push("yarn lint             # Run linter");
+      lines.push("```");
+      break;
+    case "cargo":
+      lines.push("```bash");
+      lines.push("cargo build           # Build the project");
+      lines.push("cargo test            # Run tests");
+      lines.push("cargo clippy          # Run linter");
+      lines.push("cargo fmt             # Format code");
+      lines.push("```");
+      break;
+    case "go modules":
+      lines.push("```bash");
+      lines.push("go build ./...        # Build the project");
+      lines.push("go test ./...         # Run tests");
+      lines.push("go vet ./...          # Run linter");
+      lines.push("```");
+      break;
+    case "zig build":
+      lines.push("```bash");
+      lines.push("zig build             # Build the project");
+      lines.push("zig build test        # Run tests");
+      lines.push("zig fmt .             # Format code");
+      lines.push("```");
+      break;
+    case "pip":
+    case "poetry":
+    case "uv":
+      lines.push("```bash");
+      if (info.packageManager === "poetry") {
+        lines.push("poetry install        # Install dependencies");
+        lines.push("poetry run pytest     # Run tests");
+        lines.push("poetry run ruff check # Run linter");
+      } else if (info.packageManager === "uv") {
+        lines.push("uv sync               # Install dependencies");
+        lines.push("uv run pytest         # Run tests");
+        lines.push("uv run ruff check     # Run linter");
+      } else {
+        lines.push("pip install -r requirements.txt  # Install dependencies");
+        lines.push("pytest                # Run tests");
+        lines.push("ruff check            # Run linter");
+      }
       lines.push("```");
       break;
     default:
