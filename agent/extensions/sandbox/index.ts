@@ -636,14 +636,13 @@ export default function (pi: ExtensionAPI) {
         ctx.ui.setStatus("guardian", `🔍 Guardian reviewing: ${command.slice(0, 60)}...`);
         try {
           const gr = await guardianReview(command, ctx.cwd, 60000, ctx.signal);
-          if (gr.decision === "allow") {
+          if (gr.outcome === "allow") {
             ctx.ui.setStatus("guardian", undefined);
             ctx.ui.notify(`✅ Auto-approved: ${gr.reason}`, "warning");
             // fall through to execute
           } else {
             ctx.ui.setStatus("guardian", undefined);
-            const label = gr.decision === "prompt" ? "needs manual review" : "blocked by guardian";
-            ctx.ui.notify(`🚫 Auto-review ${label}: ${gr.reason}`, "error");
+            ctx.ui.notify(`🚫 Auto-review blocked: ${gr.reason}`, "error");
             return {
               result: {
                 output: `Auto-review blocked: ${gr.reason}`,
@@ -781,13 +780,12 @@ export default function (pi: ExtensionAPI) {
         try {
           const gr = await guardianReview(command, ctx.cwd, 60000, ctx.signal);
           ctx.ui.setStatus("guardian", undefined);
-          if (gr.decision === "allow") {
+          if (gr.outcome === "allow") {
             ctx.ui.notify(`✅ Auto-approved: ${gr.reason}`, "warning");
             // fall through to execute
           } else {
-            const label = gr.decision === "prompt" ? "needs manual review" : "blocked by guardian";
-            ctx.ui.notify(`🚫 Auto-review ${label}: ${gr.reason}`, "error");
-            return { block: true, reason: `Guardian ${label}: ${gr.reason}` };
+            ctx.ui.notify(`🚫 Auto-review blocked: ${gr.reason}`, "error");
+            return { block: true, reason: `Guardian blocked: ${gr.reason}` };
           }
         } catch (e) {
           ctx.ui.setStatus("guardian", undefined);
