@@ -226,6 +226,25 @@ export function matchesBannedPrefix(tokens: string[], bannedPrefixes: string[][]
   return null;
 }
 
+/** Shell command separators — split compound commands for individual evaluation. */
+const COMMAND_SEPARATORS = new Set(["|", "||", "&&", ";"]);
+
+/** Split tokenized command into sub-commands on separators. */
+function splitCommands(tokens: string[]): string[][] {
+  const result: string[][] = [];
+  let current: string[] = [];
+  for (const t of tokens) {
+    if (COMMAND_SEPARATORS.has(t)) {
+      if (current.length > 0) result.push(current);
+      current = [];
+    } else {
+      current.push(t);
+    }
+  }
+  if (current.length > 0) result.push(current);
+  return result;
+}
+
 /**
  * Evaluate a command string end-to-end.
  */
@@ -237,9 +256,31 @@ export function evaluateCommand(
   if (tokens.length === 0) {
     return { evaluation: { matchedRules: [], decision: null }, bannedBy: null };
   }
-  const evaluation = evaluateTokens(tokens, policy.rules);
-  const bannedBy = matchesBannedPrefix(tokens, policy.bannedPrefixes);
-  return { evaluation, bannedBy };
+
+  // Split into sub-commands (pipes, chains) and evaluate each individually
+  const subCommands = splitCommands(tokens);
+  if (subCommands.length === 1) {
+    const evaluation = evaluateTokens(tokens, policy.rules);
+    const bannedBy = matchesBannedPrefix(tokens, policy.bannedPrefixes);
+    return { evaluation, bannedBy };
+  }
+
+  let strictestEval: Evaluation = { matchedRules: [], decision: null };
+  let bannedBy: string[] | null = null;
+  for (const subTokens of subCommands) {
+    const subEval = evaluateTokens(subTokens, policy.rules);
+    if (
+      subEval.decision &&
+      (!strictestEval.decision ||
+        decisionSeverity(subEval.decision) > decisionSeverity(strictestEval.decision))
+    ) {
+      strictestEval = subEval;
+    }
+    if (!bannedBy) {
+      bannedBy = matchesBannedPrefix(subTokens, policy.bannedPrefixes);
+    }
+  }
+  return { evaluation: strictestEval, bannedBy };
 }
 
 // ── Loading ───────────────────────────────────────────────────────────
