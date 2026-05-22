@@ -122,6 +122,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_start", async (_event, ctx) => {
     cwd = ctx.cwd;
     baseline = makeBaseline(cwd);
+    if (timer) clearInterval(timer);
     timer = setInterval(poll, POLL_INTERVAL);
     (globalThis as any).__fileWatcherTimer = timer;
   });
