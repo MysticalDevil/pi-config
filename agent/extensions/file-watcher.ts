@@ -41,6 +41,7 @@ function makeBaseline(cwd: string): Map<string, string | null> {
         const hash = execFileSync("git", ["hash-object", "--", parsed.file], {
           cwd,
           encoding: "utf-8",
+          stdio: ["pipe", "pipe", "pipe"],
         }).trim();
         map.set(parsed.file, hash);
       } catch {

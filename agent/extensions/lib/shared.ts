@@ -12,5 +12,9 @@ export function parseStatusLine(line: string): { status: string; file: string } 
   if (renameArrow >= 0) {
     file = file.slice(renameArrow + 4).trim();
   }
+  // git quotes paths containing special characters, e.g. ?? "dir name/"
+  if (file.startsWith('"') && file.endsWith('"')) {
+    file = file.slice(1, -1);
+  }
   return { status, file };
 }
