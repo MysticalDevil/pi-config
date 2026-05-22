@@ -138,6 +138,8 @@ function loadConfig(cwd: string): SandboxConfig {
 }
 
 function deepMerge<T extends Record<string, unknown>>(base: T, overrides: Partial<T>): T {
+  // Arrays are replaced (not concatenated) — project config fully overrides defaults.
+  // Use 'deniedPaths' etc. to extend, not erase, the built-in list in project configs.
   const result: Record<string, unknown> = { ...base };
   for (const key of Object.keys(overrides)) {
     const ov = (overrides as Record<string, unknown>)[key];
