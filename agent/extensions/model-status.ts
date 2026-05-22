@@ -24,8 +24,5 @@ export default function (pi: ExtensionAPI) {
 
     // Update status bar with current model
     ctx.ui.setStatus("model", `🤖 ${model.id}`);
-
-    // Log change details (visible in debug output)
-    console.log(`[model_select] ${prev} → ${next} (${source})`);
   });
 }
