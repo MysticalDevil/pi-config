@@ -32,6 +32,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { type BashOperations, createBashTool, getAgentDir } from "@earendil-works/pi-coding-agent";
+import { Type } from "typebox";
 import { evaluateCommand, type LoadedPolicy, loadPolicy } from "./execpolicy.js";
 import { guardianReview } from "./guardian.js";
 import {
@@ -920,6 +921,43 @@ export default function (pi: ExtensionAPI) {
   setupTurnDiff(pi);
 
   // ── /permissions command ───────────────────────────────────────────────
+
+  // Register a tool so the LLM can query the current mode
+  pi.registerTool({
+    name: "get_permissions_mode",
+    label: "Get Permissions Mode",
+    description: "Check the active permission mode: sandbox, auto-review, or full-access.",
+    parameters: Type.Object({}),
+    async execute() {
+      const bwrapOk = checkBwrap();
+      const status =
+        currentMode === "sandbox"
+          ? sandboxActive
+            ? "active (bwrap)"
+            : bwrapOk
+              ? "inactive"
+              : "bwrap missing"
+          : "inactive";
+      return {
+        content: [
+          {
+            type: "text",
+            text:
+              `${MODE_EMOJI[currentMode]} ${currentMode}\nsandbox: ${status}\n` +
+              `execpolicy: ${currentPolicy.rules.length} rules, ${currentPolicy.bannedPrefixes.length} banned\n` +
+              `write-protected: ${sandboxConfig.writeProtected.join(", ")}`,
+          },
+        ],
+        details: {
+          mode: currentMode,
+          sandboxActive,
+          bwrapAvailable: bwrapOk,
+          rulesCount: currentPolicy.rules.length,
+          bannedCount: currentPolicy.bannedPrefixes.length,
+        },
+      };
+    },
+  });
 
   pi.registerCommand("permissions", {
     description:
