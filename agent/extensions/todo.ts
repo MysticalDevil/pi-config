@@ -370,8 +370,8 @@ class TodoOverlay {
     return lines;
   }
 
-  dispose(ctx: ExtensionContext): void {
-    ctx.ui.setWidget(WIDGET_KEY, undefined);
+  dispose(clearWidget: (key: string, value: undefined) => void): void {
+    clearWidget(WIDGET_KEY, undefined);
     this.registered = false;
   }
 }
@@ -475,7 +475,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("turn_end", async (_event, ctx) => refreshOverlay(ctx));
 
   pi.on("session_shutdown", () => {
-    overlay.dispose({ ui: { setWidget: () => {} } } as unknown as ExtensionContext);
+    overlay.dispose(() => {});
   });
 
   // ── Custom message renderer for todo results ──────────────────────────
