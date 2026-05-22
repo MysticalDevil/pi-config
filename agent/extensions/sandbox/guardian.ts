@@ -156,7 +156,6 @@ export async function guardianReview(
       {
         cwd,
         stdio: ["ignore", "pipe", "pipe"],
-        timeout: timeoutMs,
         env: { ...process.env, PI_SKIP_VERSION_CHECK: "1" },
       },
     );
@@ -204,8 +203,8 @@ export async function guardianReview(
 
       // Try to extract JSON from output
       const text = stdout.trim();
-      // Find JSON object in the output (model might wrap in markdown)
-      const jsonMatch = text.match(/\{[\s\S]*"outcome"[\s\S]*\}/);
+      // Find first JSON object in output (non-greedy to avoid spanning multiple objects)
+      const jsonMatch = text.match(/\{[^{}]*"outcome"[^{}]*\}/);
       if (jsonMatch) {
         const parsed = parseJsonSafely(jsonMatch[0]);
         if (parsed) {
