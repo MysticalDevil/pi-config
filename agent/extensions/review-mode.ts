@@ -148,7 +148,10 @@ export default function (pi: ExtensionAPI) {
   }
 
   function updateStatus(ctx: ExtensionContext): void {
-    if (state.changes.length === 0) return;
+    if (state.changes.length === 0) {
+      clearStatus(ctx);
+      return;
+    }
 
     const pending = state.changes.filter(
       (c) => !state.acceptedFiles.has(c.file) && !state.rejectedFiles.has(c.file),
