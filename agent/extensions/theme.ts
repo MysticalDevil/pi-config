@@ -247,14 +247,12 @@ export default function (pi: ExtensionAPI) {
             const star = isCurrent ? " ★" : "";
 
             if (swatch) {
-              // Draw mini swatch bar
+              // Draw mini swatch indicators using theme colors
               const swatchBar = [
-                swatch.bg ? ` ${theme.fg("dim", "bg")} ` : "",
-                swatch.userBg ? ` ${theme.fg("muted", "⌂")} ` : "",
-                swatch.accent
-                  ? ` ${swatch.accent.startsWith("#") ? "\x1b[38;2;" + hexToRgb(swatch.accent).join(";") + "m●\x1b[0m" : "●"} `
-                  : "",
-                swatch.text ? ` ${theme.fg("dim", "T")} ` : "",
+                swatch.bg ? ` █ ` : "",
+                swatch.userBg ? ` ⌂ ` : "",
+                swatch.accent ? ` ● ` : "",
+                swatch.text ? ` T ` : "",
               ]
                 .filter(Boolean)
                 .join("");
