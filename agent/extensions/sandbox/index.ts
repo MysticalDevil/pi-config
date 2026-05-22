@@ -416,6 +416,39 @@ function scanGitDiff(diff: string): DiffFinding[] {
       pattern: /(?:password|passwd|secret|token|api[_-]?key)\s*[:=]\s*["']([^"'\s]{8,})["']?/gi,
       type: "Credential",
     },
+    // OpenAI / LLM keys
+    {
+      pattern: /([a-zA-Z0-9_]+)\s*=\s*["']?(sk-proj-[a-zA-Z0-9_-]{30,})["']?/g,
+      type: "OpenAI project key",
+    },
+    {
+      pattern: /([a-zA-Z0-9_]+)\s*=\s*["']?(sk-svcacct-[a-zA-Z0-9_-]{30,})["']?/g,
+      type: "OpenAI service account",
+    },
+    // Anthropic keys
+    {
+      pattern: /([a-zA-Z0-9_]+)\s*=\s*["']?(sk-ant-(?:api03|admin)-[a-zA-Z0-9_-]{30,})["']?/g,
+      type: "Anthropic API key",
+    },
+    // HuggingFace tokens
+    {
+      pattern: /([a-zA-Z0-9_]+)\s*=\s*["']?(hf_[a-zA-Z0-9]{30,})["']?/g,
+      type: "HuggingFace token",
+    },
+    // Stripe live keys (sk_live_...) — separate from generic sk- pattern
+    {
+      pattern: /([a-zA-Z0-9_]+)\s*=\s*["']?(sk_live_[a-zA-Z0-9]{20,})["']?/g,
+      type: "Stripe live key",
+    },
+    {
+      pattern: /([a-zA-Z0-9_]+)\s*=\s*["']?(rk_live_[a-zA-Z0-9]{20,})["']?/g,
+      type: "Stripe restricted key",
+    },
+    // JWT tokens (standalone)
+    {
+      pattern: /(eyJ[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,}\.[a-zA-Z0-9_-]{20,})/g,
+      type: "JWT token",
+    },
   ];
 
   for (const line of lines) {
