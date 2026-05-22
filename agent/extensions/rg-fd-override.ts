@@ -119,7 +119,8 @@ function buildFindFdArgs(params: Record<string, unknown>): { command: string; ar
   const pattern = (params.pattern as string) ?? "*";
   const searchPath = (params.path as string) ?? ".";
 
-  const args: string[] = ["--hidden", "--no-ignore", "--type", "f", "--glob", pattern, searchPath];
+  // fd respects .gitignore by default; matches built-in find behavior.
+  const args: string[] = ["--type", "f", "--glob", pattern, searchPath];
 
   return { command: "fd", args };
 }

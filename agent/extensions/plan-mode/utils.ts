@@ -127,11 +127,9 @@ function stripHarmlessConstructs(cmd: string): string {
 
 export function isSafeCommand(command: string): boolean {
   // Block command substitution (backticks and $())
-  if (new RegExp("`").test(command) || /\$\(/.test(command)) return false;
+  if (/`|\$\(/.test(command)) return false;
   // Block OR operator (could hide destructive commands in fallback)
   if (/\|\|/.test(command)) return false;
-  // Block sub-shells
-  if (new RegExp("\\$\\(").test(command)) return false;
 
   const subcommands = command
     .split(/&&/)
