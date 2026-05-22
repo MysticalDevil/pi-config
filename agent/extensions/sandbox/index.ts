@@ -27,7 +27,7 @@
  */
 
 import { execSync, spawn } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, rmSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
@@ -254,7 +254,8 @@ function buildBwrapArgs(command: string, cwd: string, config: SandboxConfig): st
  * in the sandbox doesn't interfere.
  */
 function ensureEmptyDir(path: string) {
-  execSync(`rm -rf "${path}" && mkdir -p "${path}"`, { stdio: "ignore" });
+  rmSync(path, { recursive: true, force: true });
+  mkdirSync(path, { recursive: true });
 }
 
 // ── Bash operations: sandboxed ──────────────────────────────────────────────
@@ -804,7 +805,7 @@ export default function (pi: ExtensionAPI) {
   pi.on("session_shutdown", async () => {
     // Clean up empty dir marker
     try {
-      execSync("rm -rf /tmp/.bwrap-empty", { stdio: "ignore" });
+      rmSync("/tmp/.bwrap-empty", { recursive: true, force: true });
     } catch (e) {
       if (e instanceof Error && (e as NodeJS.ErrnoException).code !== "ENOENT") {
         console.error("sandbox: failed to clean up /tmp/.bwrap-empty:", e.message);
