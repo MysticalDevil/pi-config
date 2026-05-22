@@ -796,21 +796,6 @@ export default function (pi: ExtensionAPI) {
           };
         }
       }
-
-      if (
-        evaluation.decision === "allow" ||
-        evaluation.decision === null ||
-        evaluation.decision === "prompt"
-      ) {
-        // Non-blocking background review for transparent commands
-        guardianReview(command, ctx.cwd)
-          .then((result) => {
-            if (result.decision !== "allow") {
-              ctx.ui.notify(`⚠️ Guardian: ${result.reason}\n  ${command.slice(0, 80)}`, "warning");
-            }
-          })
-          .catch(() => {});
-      }
     }
 
     // sandbox: check write-protected paths for edit/write tools
