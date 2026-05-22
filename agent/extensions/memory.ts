@@ -54,7 +54,8 @@ function loadMemories(): Memory[] {
     return JSON.parse(data) as Memory[];
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return [];
-    throw e;
+    console.error(`memory: failed to load ${MEMORY_FILE}: ${e}`);
+    return [];
   }
 }
 
