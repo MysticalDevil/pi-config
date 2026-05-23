@@ -1,3 +1,7 @@
+# ── Cache ──
+agent/mcp-cache.json
+agent/mcp-npx-cache.json
+
 # ── API keys & credentials (DO NOT COMMIT) ──
 auth.json
 
