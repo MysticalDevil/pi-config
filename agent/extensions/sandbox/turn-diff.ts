@@ -51,7 +51,7 @@ function isGitRepo(cwd: string): boolean {
 
 function getHeadSha(cwd: string): string {
   try {
-    return execSync("git rev-parse HEAD", { cwd, encoding: "utf-8" }).trim();
+    return execSync("git rev-parse HEAD", { cwd, encoding: "utf-8", stdio: "ignore" }).trim();
   } catch (e) {
     if (e instanceof Error && !e.message.includes("not a git repository")) {
       console.error("turn-diff: git rev-parse failed:", e.message);
@@ -65,6 +65,7 @@ function getDiffStat(cwd: string): string {
     return execSync("git diff --stat -- . ':!node_modules' ':!.git'", {
       cwd,
       encoding: "utf-8",
+      stdio: "ignore",
     }).trim();
   } catch (e) {
     if (e instanceof Error && !e.message.includes("not a git repository")) {
@@ -80,6 +81,7 @@ function getFullDiff(cwd: string): string {
       cwd,
       encoding: "utf-8",
       maxBuffer: 50 * 1024, // 50KB
+      stdio: "ignore",
     }).trim();
   } catch (e) {
     if (e instanceof Error && !e.message.includes("not a git repository")) {
@@ -98,6 +100,7 @@ function getUntrackedFiles(cwd: string): string[] {
     return execSync("git ls-files --others --exclude-standard -- .", {
       cwd,
       encoding: "utf-8",
+      stdio: "ignore",
     })
       .trim()
       .split("\n")

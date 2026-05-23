@@ -592,6 +592,7 @@ export default function (pi: ExtensionAPI) {
           cwd: event.cwd,
           encoding: "utf-8",
           maxBuffer: 2 * 1024 * 1024,
+          stdio: "ignore",
         });
         if (diff.trim()) {
           const findings = scanGitDiff(diff);
@@ -726,6 +727,7 @@ export default function (pi: ExtensionAPI) {
           cwd: ctx.cwd,
           encoding: "utf-8",
           maxBuffer: 2 * 1024 * 1024,
+          stdio: "ignore",
         });
         if (diff.trim()) {
           const findings = scanGitDiff(diff);

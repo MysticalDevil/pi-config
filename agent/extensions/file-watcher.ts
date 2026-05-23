@@ -19,7 +19,7 @@ import { parseStatusLine } from "./lib/shared";
 function makeBaseline(cwd: string): Map<string, string | null> {
   const map = new Map<string, string | null>();
   try {
-    const out = execSync("git status --porcelain=v1", { cwd, encoding: "utf-8" });
+    const out = execSync("git status --porcelain=v1", { cwd, encoding: "utf-8", stdio: "ignore" });
     for (const line of out.trim().split("\n")) {
       if (!line) continue;
 
@@ -41,7 +41,7 @@ function makeBaseline(cwd: string): Map<string, string | null> {
         const hash = execFileSync("git", ["hash-object", "--", parsed.file], {
           cwd,
           encoding: "utf-8",
-          stdio: ["pipe", "pipe", "pipe"],
+          stdio: ["ignore", "pipe", "ignore"],
         }).trim();
         map.set(parsed.file, hash);
       } catch {
