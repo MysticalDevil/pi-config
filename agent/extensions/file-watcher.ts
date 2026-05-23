@@ -19,7 +19,7 @@ import { parseStatusLine } from "./lib/shared";
 function makeBaseline(cwd: string): Map<string, string | null> {
   const map = new Map<string, string | null>();
   try {
-    const out = execSync("git status --porcelain=v1", { cwd, encoding: "utf-8", stdio: "ignore" });
+    const out = execSync("git status --porcelain=v1", { cwd, encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] });
     for (const line of out.trim().split("\n")) {
       if (!line) continue;
 
