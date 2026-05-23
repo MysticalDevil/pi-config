@@ -330,6 +330,33 @@ function createSandboxedBashOps(config: SandboxConfig): BashOperations {
   };
 }
 
+// ── Read defaultPermissions from settings.json ────────────────────────────
+
+function getDefaultPermissions(cwd: string): PermissionMode | undefined {
+  const globalSettingsPath = join(getAgentDir(), "settings.json");
+  const projectSettingsPath = join(cwd, ".pi", "settings.json");
+
+  let permissions: string | undefined;
+
+  for (const path of [globalSettingsPath, projectSettingsPath]) {
+    if (existsSync(path)) {
+      try {
+        const parsed = JSON.parse(readFileSync(path, "utf-8"));
+        if (parsed.defaultPermissions) {
+          permissions = parsed.defaultPermissions;
+        }
+      } catch {
+        // Ignore parse errors
+      }
+    }
+  }
+
+  if (permissions && ["sandbox", "auto-review", "full-access"].includes(permissions)) {
+    return permissions as PermissionMode;
+  }
+  return undefined;
+}
+
 // ── Check if a path matches write-protection patterns ──────────────────────
 
 function isWriteProtected(filepath: string, patterns: string[]): boolean {
@@ -886,8 +913,11 @@ export default function (pi: ExtensionAPI) {
       }
     }
 
-    // Determine initial mode
-    const initialMode: PermissionMode = noSandbox ? "full-access" : (restoredMode ?? "sandbox");
+    // Determine initial mode: CLI flag > session restore > settings default > hardcoded default
+    const settingsDefault = getDefaultPermissions(ctx.cwd);
+    const initialMode: PermissionMode = noSandbox
+      ? "full-access"
+      : (restoredMode ?? settingsDefault ?? "sandbox");
 
     // Check platform
     if (initialMode === "sandbox" && process.platform !== "linux") {
@@ -908,7 +938,13 @@ export default function (pi: ExtensionAPI) {
     } else {
       applyMode(
         initialMode,
-        noSandbox ? "cli-flag" : restoredMode ? "session-restore" : "default",
+        noSandbox
+          ? "cli-flag"
+          : restoredMode
+            ? "session-restore"
+            : settingsDefault
+              ? "settings"
+              : "default",
         ctx,
       );
     }
