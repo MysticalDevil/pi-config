@@ -87,7 +87,7 @@
 
 <!-- Add project-specific conventions here -->
 
-- `/btw` currently not working — use with caution, may need debugging
+- `/btw` — fork-based side questions (refactored from completeSimple to pi --fork)
 - Run `npm test` (or equivalent) before committing
 - Keep commits small and focused
 - Write meaningful commit messages
