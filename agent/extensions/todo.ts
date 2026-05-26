@@ -503,16 +503,21 @@ export default function (pi: ExtensionAPI) {
     overlay.update(ctx, state);
   }
 
-  // Reconstruct state from branch on session events
+  // Reconstruct state from branch on session events.
+  // Iterates backwards — each todo tool result stores the full state,
+  // so only the last one is needed (O(1) effective for large sessions).
   function reconstruct(ctx: ExtensionContext): void {
     state = createEmptyState();
-    for (const entry of ctx.sessionManager.getBranch()) {
+    const branch = ctx.sessionManager.getBranch();
+    for (let i = branch.length - 1; i >= 0; i--) {
+      const entry = branch[i];
       if (entry.type !== "message") continue;
       const msg = entry.message;
       if (msg.role !== "toolResult" || msg.toolName !== "todo") continue;
       const details = msg.details as TaskDetails | undefined;
       if (details?.tasks) {
         state = { tasks: details.tasks.map((t) => ({ ...t })), nextId: details.nextId };
+        break;
       }
     }
     refreshOverlay(ctx);

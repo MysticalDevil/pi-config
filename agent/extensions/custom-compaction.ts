@@ -57,7 +57,25 @@ export default function (pi: ExtensionAPI) {
     );
 
     // Convert messages to readable text format
-    const conversationText = serializeConversation(convertToLlm(allMessages));
+    let conversationText = serializeConversation(convertToLlm(allMessages));
+
+    // Guard: truncate if conversation exceeds summarization model's context.
+    // Gemini Flash handles ~1M tokens; cap at ~100K chars (~25K tokens) to be safe
+    // and leave room for the prompt itself. Truncate from the MIDDLE to preserve
+    // both early context (setup, decisions) and late context (current state).
+    const MAX_CONVERSATION_CHARS = 100_000;
+    if (conversationText.length > MAX_CONVERSATION_CHARS) {
+      const keepStart = Math.floor(MAX_CONVERSATION_CHARS * 0.4);
+      const keepEnd = MAX_CONVERSATION_CHARS - keepStart;
+      conversationText =
+        conversationText.slice(0, keepStart) +
+        "\n\n... [truncated for summarization] ...\n\n" +
+        conversationText.slice(-keepEnd);
+      ctx.ui.notify(
+        `Custom compaction: truncating conversation (${conversationText.length.toLocaleString()} chars) for summarization`,
+        "info",
+      );
+    }
 
     // Include previous summary context if available
     const previousContext = previousSummary
