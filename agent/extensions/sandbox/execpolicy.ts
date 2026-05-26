@@ -304,6 +304,11 @@ const DEFAULT_RULES: PolicyFile = {
       justification: "World-writable permissions",
     },
     {
+      pattern: ["chmod", ["u+s", "g+s", "+s"]],
+      decision: "forbidden",
+      justification: "setuid/setgid privilege escalation",
+    },
+    {
       pattern: ["git", "push", "--force"],
       decision: "prompt",
       justification: "Force push rewrites remote history",
@@ -312,6 +317,21 @@ const DEFAULT_RULES: PolicyFile = {
       pattern: ["git", "push", ["-f", "--force"]],
       decision: "prompt",
       justification: "Force push rewrites remote history",
+    },
+    {
+      pattern: ["mount"],
+      decision: "forbidden",
+      justification: "Mount operations can bypass sandbox restrictions",
+    },
+    {
+      pattern: ["unshare"],
+      decision: "forbidden",
+      justification: "Namespace manipulation can bypass sandbox",
+    },
+    {
+      pattern: ["chroot"],
+      decision: "forbidden",
+      justification: "Root filesystem change is a sandbox escape vector",
     },
     {
       pattern: ["shutdown"],
@@ -342,9 +362,18 @@ const DEFAULT_RULES: PolicyFile = {
   banned_prefixes: [
     ["python3", "-c"],
     ["python", "-c"],
+    ["python3"],
+    ["python"],
     ["bash", "-c"],
     ["sh", "-c"],
     ["zsh", "-c"],
+    ["node", "-e"],
+    ["perl", "-e"],
+    ["ruby", "-e"],
+    ["php", "-r"],
+    ["lua", "-e"],
+    ["env", "bash"],
+    ["env", "sh"],
   ],
 };
 

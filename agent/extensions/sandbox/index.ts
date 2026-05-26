@@ -223,8 +223,8 @@ function buildBwrapArgs(command: string, cwd: string, config: SandboxConfig): st
   // Always make /tmp writable via tmpfs (already done above)
 
   // Hide denied paths — bind an empty tmpfs over them
-  // We need a throwaway empty directory; use /tmp/.bwrap-empty-XXXX
-  const emptyDir = "/tmp/.bwrap-empty";
+  // Per-process unique directory to avoid races between concurrent pi instances
+  const emptyDir = `/tmp/.bwrap-empty-${process.pid}`;
   ensureEmptyDir(emptyDir);
 
   for (const dp of config.deniedPaths) {
@@ -961,12 +961,12 @@ export default function (pi: ExtensionAPI) {
   });
 
   pi.on("session_shutdown", async () => {
-    // Clean up empty dir marker
+    // Clean up per-process empty dir marker
     try {
-      rmSync("/tmp/.bwrap-empty", { recursive: true, force: true });
+      rmSync(`/tmp/.bwrap-empty-${process.pid}`, { recursive: true, force: true });
     } catch (e) {
       if (e instanceof Error && (e as NodeJS.ErrnoException).code !== "ENOENT") {
-        console.error("sandbox: failed to clean up /tmp/.bwrap-empty:", e.message);
+        console.error("sandbox: failed to clean up empty dir:", e.message);
       }
     }
   });
