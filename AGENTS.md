@@ -87,6 +87,7 @@
 
 <!-- Add project-specific conventions here -->
 
+- `/btw` currently not working — use with caution, may need debugging
 - Run `npm test` (or equivalent) before committing
 - Keep commits small and focused
 - Write meaningful commit messages
