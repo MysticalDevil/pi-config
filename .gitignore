@@ -27,3 +27,4 @@ agent/settings.json
 agent/models.json
 web-search.json
 exa-usage.json
+agent/memories.json
