@@ -243,7 +243,6 @@ export async function guardianReview(
             });
             return;
           }
-        }
       }
 
       // Failed to parse — log stderr for diagnostics, then conservative deny
