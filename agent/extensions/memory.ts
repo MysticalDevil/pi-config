@@ -62,7 +62,22 @@ function loadMemories(): Memory[] {
 function saveMemories(memories: Memory[]): void {
   const dir = path.dirname(MEMORY_FILE);
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-  fs.writeFileSync(MEMORY_FILE, JSON.stringify(memories, null, 2), "utf-8");
+  // Atomic write: temp file then rename to avoid truncation on crash
+  const tmpPath = MEMORY_FILE + ".tmp";
+  fs.writeFileSync(tmpPath, JSON.stringify(memories, null, 2), "utf-8");
+  fs.renameSync(tmpPath, MEMORY_FILE);
+}
+
+/**
+ * Merge new memories into the persisted file, re-reading to avoid
+ * overwriting concurrent writes from another pi process.
+ * Returns the merged memory array.
+ */
+function saveAndMerge(mutate: (memories: Memory[]) => Memory[]): Memory[] {
+  const existing = loadMemories();
+  const merged = mutate(existing);
+  saveMemories(merged);
+  return merged;
 }
 
 function generateId(): string {
@@ -127,8 +142,7 @@ export default function (pi: ExtensionAPI) {
             createdAt: Date.now(),
             updatedAt: Date.now(),
           };
-          memories.push(newMem);
-          saveMemories(memories);
+          const merged = saveAndMerge((m) => { m.push(newMem); return m; });
           return {
             content: [{ type: "text", text: `✅ Saved: "${params.text}" (${newMem.id})` }],
             details: { action: "save", memory: newMem },
@@ -196,15 +210,18 @@ export default function (pi: ExtensionAPI) {
               details: {},
             };
           }
-          const idx = memories.findIndex((m) => m.id === params.id);
-          if (idx === -1) {
+          let removed: Memory | undefined;
+          const merged = saveAndMerge((memories) => {
+            const idx = memories.findIndex((m) => m.id === params.id);
+            if (idx !== -1) removed = memories.splice(idx, 1)[0];
+            return memories;
+          });
+          if (!removed) {
             return {
               content: [{ type: "text", text: `No memory found with id "${params.id}".` }],
               details: {},
             };
           }
-          const removed = memories.splice(idx, 1)[0];
-          saveMemories(memories);
           return {
             content: [{ type: "text", text: `🗑 Removed: "${removed.text}"` }],
             details: { action: "remove", removed },
@@ -212,7 +229,7 @@ export default function (pi: ExtensionAPI) {
         }
 
         case "clear": {
-          const count = memories.length;
+          const count = loadMemories().length;
           saveMemories([]);
           return {
             content: [{ type: "text", text: `🗑 Cleared all ${count} memories.` }],
@@ -273,8 +290,7 @@ export default function (pi: ExtensionAPI) {
             createdAt: Date.now(),
             updatedAt: Date.now(),
           };
-          memories.push(newMem);
-          saveMemories(memories);
+          saveAndMerge((m) => { m.push(newMem); return m; });
           ctx.ui.notify(`Saved: "${text}"`, "info");
           break;
         }
@@ -307,14 +323,19 @@ export default function (pi: ExtensionAPI) {
             ctx.ui.notify("Usage: /memory remove <id>", "error");
             return;
           }
-          const idx = memories.findIndex((m) => m.id.startsWith(rest));
-          if (idx === -1) {
+          let removedText = "";
+          saveAndMerge((memories) => {
+            const idx = memories.findIndex((m) => m.id.startsWith(rest));
+            if (idx === -1) return memories;
+            removedText = memories[idx].text;
+            memories.splice(idx, 1);
+            return memories;
+          });
+          if (!removedText) {
             ctx.ui.notify(`No memory with id starting with "${rest}"`, "warning");
             return;
           }
-          const removed = memories.splice(idx, 1)[0];
-          saveMemories(memories);
-          ctx.ui.notify(`Removed: "${removed.text}"`, "info");
+          ctx.ui.notify(`Removed: "${removedText}"`, "info");
           break;
         }
 
