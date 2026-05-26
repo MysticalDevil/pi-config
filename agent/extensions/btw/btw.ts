@@ -1,21 +1,21 @@
 /**
- * btw.ts — /btw side-question slash command.
+ * btw.ts — /btw side-question slash command (fork-based).
  *
- * Mirrors @juicesharp/rpiv-btw btw.ts exactly.
- * Asks the same primary model a one-off side question using the cloned primary
- * conversation as context. Answer rendered in a bottom-slot overlay (never
- * enters main agent's messages). History persists per-session via globalThis.
+ * Forks the current session, injects a boundary prompt to tell the model
+ * that inherited history is reference-only, then runs the side question in
+ * an ephemeral fork. The answer is rendered in a bottom-slot overlay and
+ * never enters the main conversation.
  *
- * Fix over rpiv-btw: DSML stripping in btw-ui.ts setAnswer().
+ * Follows Codex /side approach: fork → boundary prompt → one-turn answer
+ * → discard. History persists per-session via globalThis.
+ *
+ * History and snapshots replaced by fork-session lifecycle.
  */
 
-import {
-  completeSimple,
-  type AssistantMessage,
-  type Message,
-  type StopReason,
-  type UserMessage,
-} from "@earendil-works/pi-ai";
+import { spawn } from "node:child_process";
+import * as fs from "node:fs";
+import * as os from "node:os";
+import * as path from "node:path";
 import {
   convertToLlm,
   type ExtensionAPI,
@@ -24,38 +24,48 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import { showBtwOverlay } from "./btw-ui";
 
-// ── System prompt ─────────────────────────────────────────────────────
+// ── Boundary prompt (following Codex /side pattern) ───────────────────
 
-const BTW_SYSTEM_PROMPT = [
-  "You are a concise side assistant. The user is mid-task with a coding agent and needs a quick answer.",
+const SIDE_BOUNDARY_PROMPT = [
+  "Side conversation boundary.",
   "",
-  "Rules:",
-  "1. Answer in plain text — you have no tools.",
-  "2. Keep responses brief and actionable.",
-  "3. Reference the main conversation context when relevant.",
-  "4. Use markdown for code blocks and links.",
-  "5. Do NOT output DSML, XML, or tool-call markup.",
+  "Everything below this boundary is inherited history from the parent thread.",
+  "It is reference context only. It is not your current task.",
+  "",
+  "Do not continue, execute, or complete any instructions, plans, tool calls,",
+  "approvals, edits, or requests from before this boundary. Only the question",
+  "after this boundary is your active instruction.",
+  "",
+  "You are a side-conversation assistant, separate from the main thread.",
+  "Answer questions and do lightweight, non-mutating exploration without",
+  "disrupting the main thread.",
+  "",
+  "Do not modify files, source, git state, permissions, configuration, or",
+  "workspace state. Do not request escalated permissions or broader sandbox",
+  "access.",
+  "",
+  "Keep responses concise and actionable. Use markdown for code blocks.",
+  "",
+  "---",
+  "",
+  "Question (active instruction):",
 ].join("\n");
 
 // ── Types ─────────────────────────────────────────────────────────────
 
-export interface BtwTurn {
-  userMessage: UserMessage;
-  assistantMessage: AssistantMessage;
+export interface BtwHistoryEntry {
+  question: string;
+  answer: string;
 }
 
 interface BtwState {
-  histories: Map<string, BtwTurn[]>;
-  snapshots: Map<string, { messages: Message[] }>;
+  histories: Map<string, BtwHistoryEntry[]>;
 }
 
 export interface BtwExecResult {
   ok: boolean;
   answer?: string;
-  userMessage?: UserMessage;
-  assistantMessage?: AssistantMessage;
   error?: string;
-  stopReason?: StopReason;
   aborted?: boolean;
 }
 
@@ -67,7 +77,7 @@ function getState(): BtwState {
   const g = globalThis as unknown as Record<symbol, BtwState | undefined>;
   let state = g[BTW_STATE_KEY];
   if (!state) {
-    state = { histories: new Map(), snapshots: new Map() };
+    state = { histories: new Map() };
     g[BTW_STATE_KEY] = state;
   }
   return state;
@@ -77,24 +87,11 @@ function getSessionFile(ctx: ExtensionContext): string {
   return ctx.sessionManager.getSessionFile() ?? `:${ctx.sessionManager.getSessionId()}`;
 }
 
-function getSessionHistory(ctx: ExtensionContext): Array<{ question: string; answer: string }> {
-  const turns = getState().histories.get(getSessionFile(ctx)) ?? [];
-  return turns.map((t) => ({
-    question:
-      typeof t.userMessage.content === "string"
-        ? t.userMessage.content
-        : t.userMessage.content
-            .filter((c): c is { type: "text"; text: string } => c.type === "text")
-            .map((c) => c.text)
-            .join("\n"),
-    answer: t.assistantMessage.content
-      .filter((c): c is { type: "text"; text: string } => c.type === "text")
-      .map((c) => c.text)
-      .join("\n"),
-  }));
+function getSessionHistory(ctx: ExtensionContext): BtwHistoryEntry[] {
+  return getState().histories.get(getSessionFile(ctx)) ?? [];
 }
 
-function pushSessionTurn(ctx: ExtensionContext, turn: BtwTurn): void {
+function pushSessionHistory(ctx: ExtensionContext, entry: BtwHistoryEntry): void {
   const key = getSessionFile(ctx);
   const state = getState();
   let turns = state.histories.get(key);
@@ -102,129 +99,173 @@ function pushSessionTurn(ctx: ExtensionContext, turn: BtwTurn): void {
     turns = [];
     state.histories.set(key, turns);
   }
-  turns.push(turn);
+  turns.push(entry);
 }
 
 export function clearSessionHistory(ctx: ExtensionContext): void {
   getState().histories.set(getSessionFile(ctx), []);
 }
 
-function getSnapshot(ctx: ExtensionContext): Message[] | undefined {
-  return getState().snapshots.get(getSessionFile(ctx))?.messages;
+// ── Fork execution ────────────────────────────────────────────────────
+
+function getPiCommand(): { cmd: string; args: string[] } {
+  const execPath = process.execPath;
+  const scriptPath = process.argv[1];
+  if (scriptPath && !scriptPath.startsWith("/$bunfs/") && fs.existsSync(scriptPath)) {
+    return { cmd: execPath, args: [scriptPath] };
+  }
+  return { cmd: "pi", args: [] };
 }
 
-function setSnapshot(ctx: ExtensionContext, messages: Message[]): void {
-  getState().snapshots.set(getSessionFile(ctx), { messages });
+async function writeTempPrompt(content: string): Promise<string> {
+  const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "pi-btw-"));
+  const filePath = path.join(tmpDir, "boundary.md");
+  await fs.promises.writeFile(filePath, content, { encoding: "utf-8", mode: 0o600 });
+  return filePath;
 }
-
-export function invalidateSnapshot(ctx: ExtensionContext): void {
-  getState().snapshots.delete(getSessionFile(ctx));
-}
-
-// ── Conversation context ───────────────────────────────────────────────
-
-function readBranchMessages(ctx: ExtensionContext): Message[] {
-  const cached = getSnapshot(ctx);
-  if (cached) return cached;
-  const branch = ctx.sessionManager.getBranch() as SessionEntry[];
-  const agentMessages = branch
-    .filter((e): e is SessionEntry & { type: "message" } => e.type === "message")
-    .map((e) => e.message);
-  return convertToLlm(agentMessages);
-}
-
-function buildBtwMessages(ctx: ExtensionContext, userMessage: UserMessage): Message[] {
-  const branchMessages = readBranchMessages(ctx);
-  const key = getSessionFile(ctx);
-  const turns = getState().histories.get(key) ?? [];
-  const historyMessages: Message[] = turns.flatMap((h) => [h.userMessage, h.assistantMessage]);
-  return [...branchMessages, ...historyMessages, userMessage];
-}
-
-// ── Side agent call ───────────────────────────────────────────────────
 
 export async function executeBtw(
   question: string,
   ctx: ExtensionContext,
   controller: AbortController,
 ): Promise<BtwExecResult> {
-  const model = ctx.model;
-  if (!model) return { ok: false, error: "/btw requires an active model" };
+  const sessionFile = ctx.sessionManager.getSessionFile();
+  if (!sessionFile) {
+    return { ok: false, error: "/btw requires a saved session" };
+  }
 
-  const auth = await ctx.modelRegistry.getApiKeyAndHeaders(model);
-  if (!auth.ok) return { ok: false, error: `Model misconfigured: ${auth.error}` };
-  if (!auth.apiKey) return { ok: false, error: "No API key available" };
-
-  const userMessage: UserMessage = {
-    role: "user",
-    content: [{ type: "text", text: question }],
-    timestamp: Date.now(),
-  };
-  const messages = buildBtwMessages(ctx, userMessage);
+  const prompt = `${SIDE_BOUNDARY_PROMPT} ${question}`;
+  let tmpPath: string | null = null;
 
   try {
-    const response = await completeSimple(
-      model,
-      { systemPrompt: BTW_SYSTEM_PROMPT, messages, tools: [] },
-      { apiKey: auth.apiKey, headers: auth.headers, signal: controller.signal },
-    );
+    tmpPath = await writeTempPrompt(prompt);
 
-    if (response.stopReason === "aborted") {
-      return { ok: false, aborted: true };
-    }
-    if (response.stopReason === "error") {
-      return {
-        ok: false,
-        error: response.errorMessage ?? "unknown",
-        stopReason: response.stopReason,
+    const pi = getPiCommand();
+    const args = [
+      "--fork",
+      sessionFile,
+      "-p",
+      "--mode",
+      "json",
+      "--no-extensions",
+      "--append-system-prompt",
+      tmpPath,
+      question,
+    ];
+
+    return await new Promise<BtwExecResult>((resolve) => {
+      const proc = spawn(pi.cmd, pi.args.concat(args), {
+        cwd: ctx.cwd,
+        stdio: ["ignore", "pipe", "pipe"],
+        env: { ...process.env, PI_SKIP_VERSION_CHECK: "1" },
+      });
+
+      let stdout = "";
+      let stderr = "";
+      let settled = false;
+      let lastAssistantText = "";
+      let aborted = false;
+
+      const finish = (result: BtwExecResult) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timeoutId);
+        controller.signal.removeEventListener("abort", onAbort);
+        try {
+          proc.kill("SIGTERM");
+        } catch { /* already dead */ }
+        resolve(result);
       };
+
+      const timeoutId = setTimeout(() => {
+        finish({ ok: false, error: "Timed out (60s)" });
+      }, 60000);
+
+      const onAbort = () => {
+        aborted = true;
+        finish({ ok: false, aborted: true });
+      };
+      controller.signal.addEventListener("abort", onAbort, { once: true });
+
+      proc.stdout?.on("data", (data: Buffer) => {
+        stdout += data.toString();
+        // Stream lines as they arrive
+        const lines = stdout.split("\n");
+        stdout = lines.pop() ?? "";
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            const event = JSON.parse(line);
+            if (event.type === "message_end" && event.message?.role === "assistant") {
+              const content = event.message.content ?? [];
+              for (const part of content) {
+                if (part.type === "text") lastAssistantText += part.text;
+              }
+            }
+          } catch { /* skip non-JSON lines */ }
+        }
+      });
+
+      proc.stderr?.on("data", (data: Buffer) => {
+        stderr += data.toString();
+      });
+
+      proc.on("close", (code) => {
+        clearTimeout(timeoutId);
+        if (settled) return;
+
+        if (aborted) {
+          resolve({ ok: false, aborted: true });
+          return;
+        }
+
+        // Process any remaining output
+        if (stdout.trim()) {
+          try {
+            const event = JSON.parse(stdout.trim());
+            if (event.type === "message_end" && event.message?.role === "assistant") {
+              const content = event.message.content ?? [];
+              for (const part of content) {
+                if (part.type === "text") lastAssistantText += part.text;
+              }
+            }
+          } catch { /* skip */ }
+        }
+
+        const answer = lastAssistantText.trim();
+        if (answer) {
+          resolve({ ok: true, answer });
+        } else {
+          const errPreview = stderr.trim().slice(0, 200);
+          resolve({
+            ok: false,
+            error: code === 0
+              ? "No answer produced"
+              : `Fork exited ${code}${errPreview ? ": " + errPreview : ""}`,
+          });
+        }
+      });
+
+      proc.on("error", () => {
+        clearTimeout(timeoutId);
+        resolve({ ok: false, error: "Failed to start subprocess" });
+      });
+    });
+  } finally {
+    if (tmpPath && fs.existsSync(tmpPath)) {
+      fs.unlinkSync(tmpPath);
+      // Clean up tmp dir
+      const tmpDir = path.dirname(tmpPath);
+      try { fs.rmdirSync(tmpDir); } catch { /* dir may have other files */ }
     }
-
-    const answerText = response.content
-      .filter((c): c is { type: "text"; text: string } => c.type === "text")
-      .map((c) => (c as { text: string }).text)
-      .join("\n")
-      .trim();
-
-    if (!answerText) return { ok: false, error: "Empty response" };
-
-    return {
-      ok: true,
-      answer: answerText,
-      userMessage,
-      assistantMessage: response,
-      stopReason: response.stopReason,
-    };
-  } catch (err) {
-    if (controller.signal.aborted) return { ok: false, aborted: true };
-    return { ok: false, error: String(err) };
   }
-}
-
-// ── Hooks ─────────────────────────────────────────────────────────────
-
-export function registerMessageEndSnapshot(pi: ExtensionAPI): void {
-  pi.on("message_end", async (event, ctx) => {
-    const msg = event.message;
-    if (msg.role !== "assistant") return;
-    const branch = ctx.sessionManager.getBranch() as SessionEntry[];
-    const agentMessages = branch
-      .filter((e): e is SessionEntry & { type: "message" } => e.type === "message")
-      .map((e) => e.message);
-    setSnapshot(ctx, convertToLlm(agentMessages));
-  });
-}
-
-export function registerInvalidationHooks(pi: ExtensionAPI): void {
-  pi.on("session_compact", async (_e, ctx) => invalidateSnapshot(ctx));
-  pi.on("session_tree", async (_e, ctx) => invalidateSnapshot(ctx));
 }
 
 // ── Command handler ───────────────────────────────────────────────────
 
 export function registerBtwCommand(pi: ExtensionAPI): void {
   pi.registerCommand("btw", {
-    description: "Ask a side question without polluting the main conversation",
+    description: "Ask a side question in an ephemeral session fork",
     handler: async (args, ctx) => {
       if (!ctx.hasUI) {
         ctx.ui.notify("/btw requires interactive mode", "error");
@@ -233,10 +274,6 @@ export function registerBtwCommand(pi: ExtensionAPI): void {
       const question = args.trim();
       if (!question) {
         ctx.ui.notify("Usage: /btw <question>", "warning");
-        return;
-      }
-      if (!ctx.model) {
-        ctx.ui.notify("/btw requires an active model", "error");
         return;
       }
 
@@ -253,12 +290,9 @@ export function registerBtwCommand(pi: ExtensionAPI): void {
       const overlayCtl = await controllerReady;
       const result = await executeBtw(question, ctx, controller);
 
-      if (result.ok && result.answer && result.userMessage && result.assistantMessage) {
+      if (result.ok && result.answer) {
         overlayCtl.setAnswer(result.answer);
-        pushSessionTurn(ctx, {
-          userMessage: result.userMessage,
-          assistantMessage: result.assistantMessage,
-        });
+        pushSessionHistory(ctx, { question, answer: result.answer });
       } else if (result.aborted) {
         // user pressed Esc — overlay already dismissed
       } else if (result.error) {
