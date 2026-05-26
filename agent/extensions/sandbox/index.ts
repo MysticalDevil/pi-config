@@ -360,6 +360,14 @@ function getDefaultPermissions(cwd: string): PermissionMode | undefined {
 }
 
 // ── Check if a path matches write-protection patterns ──────────────────────
+//
+// Supported glob syntax (matches against basename only):
+//   "*.ext"   → any file ending in .ext (e.g., "*.pem" matches "key.pem")
+//   "prefix.*"→ any file starting with prefix (e.g., ".env.*" matches ".env.local")
+//   "name"    → exact basename match (e.g., ".env" matches "src/.env")
+//
+// Note: recursive globs (**/*.env) are not supported; only the file's
+// basename is checked.
 
 function isWriteProtected(filepath: string, patterns: string[]): boolean {
   const base = filepath.split("/").pop() ?? filepath;
@@ -488,6 +496,10 @@ function scanGitDiff(diff: string): DiffFinding[] {
     if (!line.startsWith("+") || line.startsWith("+++")) continue;
     currentLine++;
     const added = line.slice(1);
+
+    // Fast pre-filter: only scan lines likely to contain secrets
+    if (!/[=:]|BEGIN|eyJ/.test(added)) continue;
+
     for (const { pattern, type } of patterns) {
       pattern.lastIndex = 0;
       let match: RegExpExecArray | null = pattern.exec(added);

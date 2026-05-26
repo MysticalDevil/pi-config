@@ -8,11 +8,14 @@
  */
 
 import { execFileSync, execSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-const POLL_INTERVAL = 3000;
+// Default polling interval in ms. Override via ~/.pi/agent/settings.json:
+// { "fileWatcher": { "pollIntervalMs": 5000 } }
+const DEFAULT_POLL_INTERVAL = 3000;
 
 import { parseStatusLine } from "./lib/shared";
 
@@ -114,7 +117,20 @@ export default function (pi: ExtensionAPI) {
     cwd = ctx.cwd;
     baseline = makeBaseline(cwd);
     if (timer) clearInterval(timer);
-    timer = setInterval(poll, POLL_INTERVAL);
+
+    // Read poll interval from settings
+    let interval = DEFAULT_POLL_INTERVAL;
+    try {
+      const settingsPath = join(homedir(), ".pi", "agent", "settings.json");
+      if (existsSync(settingsPath)) {
+        const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
+        if (typeof settings.fileWatcher?.pollIntervalMs === "number" && settings.fileWatcher.pollIntervalMs >= 1000) {
+          interval = settings.fileWatcher.pollIntervalMs;
+        }
+      }
+    } catch { /* use default on parse error */ }
+
+    timer = setInterval(poll, interval);
     (globalThis as any).__fileWatcherTimer = timer;
   });
 
