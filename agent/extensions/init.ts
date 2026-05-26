@@ -13,6 +13,7 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { detectAll, type ProjectInfo as DetectedInfo } from "./lib/project-detect";
 
 interface ProjectInfo {
   name: string;
@@ -44,19 +45,6 @@ const IGNORED_DIRS = new Set([
   ".tox",
   ".mypy_cache",
 ]);
-
-const LANGUAGE_SIGNATURES: Record<string, string[]> = {
-  TypeScript: ["tsconfig.json", "*.ts", "*.tsx"],
-  JavaScript: ["package.json", "*.js", "*.jsx"],
-  Python: ["pyproject.toml", "setup.py", "requirements.txt", "*.py"],
-  Rust: ["Cargo.toml", "*.rs"],
-  Go: ["go.mod", "*.go"],
-  Zig: ["build.zig", "*.zig"],
-  Java: ["pom.xml", "build.gradle", "*.java"],
-  Kotlin: ["build.gradle.kts", "*.kt"],
-  Ruby: ["Gemfile", "*.rb"],
-  "C/C++": ["CMakeLists.txt", "Makefile", "*.c", "*.cpp", "*.h"],
-};
 
 const FRAMEWORK_SIGNATURES: Record<string, string> = {
   "next.config.js": "Next.js",
@@ -94,41 +82,6 @@ const BUILD_TOOL_SIGNATURES: Record<string, string> = {
   justfile: "Just",
   "taskfile.yaml": "Task",
 };
-
-function findFiles(dir: string, pattern: string): boolean {
-  try {
-    const entries = fs.readdirSync(dir);
-    for (const entry of entries) {
-      if (entry.startsWith(".") && entry !== ".env.example" && entry !== ".gitignore") continue;
-      if (IGNORED_DIRS.has(entry)) continue;
-
-      const fullPath = path.join(dir, entry);
-      const stat = fs.statSync(fullPath);
-
-      if (stat.isFile()) {
-        if (matchGlob(entry, pattern)) return true;
-      } else if (stat.isDirectory() && pattern.startsWith("*.")) {
-        if (findFiles(fullPath, pattern)) return true;
-      }
-    }
-  } catch (e) {
-    if (
-      (e as NodeJS.ErrnoException).code !== "ENOENT" &&
-      (e as NodeJS.ErrnoException).code !== "EACCES"
-    )
-      throw e;
-  }
-  return false;
-}
-
-function matchGlob(filename: string, pattern: string): boolean {
-  if (pattern === filename) return true;
-  if (pattern.startsWith("*.")) {
-    const ext = pattern.slice(1);
-    return filename.endsWith(ext);
-  }
-  return false;
-}
 
 function scanProject(cwd: string): ProjectInfo {
   const entries = fs.readdirSync(cwd);
@@ -176,23 +129,12 @@ function scanProject(cwd: string): ProjectInfo {
     }
   }
 
-  // Detect languages
-  const languages: string[] = [];
-  for (const [lang, sigs] of Object.entries(LANGUAGE_SIGNATURES)) {
-    for (const sig of sigs) {
-      if (sig.startsWith("*.")) {
-        if (findFiles(cwd, sig)) {
-          languages.push(lang);
-          break;
-        }
-      } else if (files.includes(sig) || configFiles.includes(sig)) {
-        languages.push(lang);
-        break;
-      }
-    }
-  }
+  // Detect languages and package manager via shared project detection module
+  const detected = detectAll(cwd);
+  const languages = detected.languages.filter((l) => l !== "unknown");
+  const packageManager = detected.packageManager ?? "npm";
 
-  // Detect frameworks
+  // Detect frameworks (init.ts has richer framework detection than shared module)
   const frameworks: string[] = [];
   for (const [file, name] of Object.entries(FRAMEWORK_SIGNATURES)) {
     if (files.includes(file) || configFiles.includes(file) || fs.existsSync(path.join(cwd, file))) {
@@ -208,20 +150,7 @@ function scanProject(cwd: string): ProjectInfo {
     }
   }
 
-  // Detect package manager (JS + non-JS)
-  let packageManager = "npm";
-  if (files.includes("pnpm-lock.yaml") || configFiles.includes("pnpm-workspace.yaml"))
-    packageManager = "pnpm";
-  else if (files.includes("yarn.lock")) packageManager = "yarn";
-  else if (files.includes("bun.lockb")) packageManager = "bun";
-  else if (files.includes("Cargo.toml")) packageManager = "cargo";
-  else if (files.includes("go.mod")) packageManager = "go modules";
-  else if (files.includes("build.zig")) packageManager = "zig build";
-  else if (files.includes("poetry.lock")) packageManager = "poetry";
-  else if (files.includes("uv.lock")) packageManager = "uv";
-  else if (files.includes("requirements.txt") || files.includes("Pipfile")) packageManager = "pip";
-
-  // Package name from package.json
+  // Package name from package.json or Cargo.toml
   let projectName = path.basename(cwd);
   if (files.includes("package.json")) {
     try {
