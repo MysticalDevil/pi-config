@@ -203,11 +203,35 @@ export async function guardianReview(
 
       // Try to extract JSON from output
       const text = stdout.trim();
-      // Find first JSON object in output (non-greedy to avoid spanning multiple objects)
-      const jsonMatch = text.match(/\{[^{}]*"outcome"[^{}]*\}/);
-      if (jsonMatch) {
-        const parsed = parseJsonSafely(jsonMatch[0]);
-        if (parsed) {
+
+      // Robust JSON extraction: try whole output first, then extract
+      // the first balanced JSON object containing "outcome"
+      let parsed: GuardianJsonResponse | null = parseJsonSafely(text);
+
+      if (!parsed) {
+        // Extract balanced {} block — handles nested objects/arrays
+        const firstBrace = text.indexOf("{");
+        if (firstBrace >= 0) {
+          let depth = 0;
+          let inString = false;
+          let escape = false;
+          let end = -1;
+          for (let i = firstBrace; i < text.length; i++) {
+            const ch = text[i];
+            if (escape) { escape = false; continue; }
+            if (ch === "\\") { escape = true; continue; }
+            if (ch === '"') { inString = !inString; continue; }
+            if (inString) continue;
+            if (ch === "{") depth++;
+            else if (ch === "}") { depth--; if (depth === 0) { end = i + 1; break; } }
+          }
+          if (end > firstBrace) {
+            parsed = parseJsonSafely(text.slice(firstBrace, end));
+          }
+        }
+      }
+
+      if (parsed) {
           const outcome = parsed.outcome?.toLowerCase();
           if (outcome === "allow" || outcome === "deny") {
             finish({
