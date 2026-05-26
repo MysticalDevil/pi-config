@@ -17,7 +17,6 @@
 │   ├── extensions/
 │   │   ├── plan-mode/
 │   │   ├── sandbox/
-│   │   ├── subagent/
 │   │   ├── add-context.ts
 │   │   ├── bookmark.ts
 │   │   ├── btw.ts
@@ -76,6 +75,13 @@
 - `sandbox.json`
 - `tsconfig.json`
 - `.gitignore`
+
+## Installed Packages
+
+- `npm:pi-subagents` — Subagent orchestration (single/chain/parallel/async) with 8 builtin agents (scout, planner, worker, reviewer, oracle, researcher, context-builder, delegate). Replaces the local `extensions/subagent/` implementation.
+- `npm:context-mode` — Context window protection via sandboxed execution (`ctx_execute`, `ctx_execute_file`, `ctx_search`, etc.). Zero config.
+- `npm:pi-web-access` — Web search and content fetching.
+- `npm:pi-mcp-adapter` — MCP server connectivity.
 
 ## Conventions
 
