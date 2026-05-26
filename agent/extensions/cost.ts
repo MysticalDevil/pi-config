@@ -241,7 +241,7 @@ export default function (pi: ExtensionAPI) {
       await ctx.ui.custom((tui, _theme, _kb, done) => {
         return {
           render(_width: number) {
-            const availHeight = Math.max(5, (tui as any).getHeight?.() ?? 40) - 2;
+            const availHeight = Math.max(5, ((tui as unknown as { getHeight?: () => number }).getHeight?.() ?? 40) - 2);
             const maxScroll = Math.max(0, lines.length - availHeight);
             if (scrollOffset > maxScroll) scrollOffset = maxScroll;
             if (scrollOffset < 0) scrollOffset = 0;

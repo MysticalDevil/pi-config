@@ -25,8 +25,11 @@ async function checkDirtyRepo(
   // Silently skip if not a git repo
   if (!isGitRepo(ctx.cwd)) return;
 
-  // Check for uncommitted changes
-  const { stdout, code } = await pi.exec("git", ["status", "--porcelain"]);
+  // Check for uncommitted changes. Suppress stderr to avoid
+  // leaking git hook/submodule warnings to the terminal.
+  const { stdout, code } = await pi.exec("git", ["status", "--porcelain"], {
+    stdio: ["ignore", "pipe", "pipe"],
+  });
 
   if (code !== 0) {
     return;

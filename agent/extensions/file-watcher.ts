@@ -85,9 +85,11 @@ export default function (pi: ExtensionAPI) {
   let baseline = new Map<string, string | null>();
   let timer: ReturnType<typeof setInterval> | null = null;
 
+type GlobalWithWatcher = typeof globalThis & { __fileWatcherTimer?: ReturnType<typeof setInterval> };
+
   // Global guard: prevent duplicate watchers across reloads
-  if ((globalThis as any).__fileWatcherTimer) {
-    clearInterval((globalThis as any).__fileWatcherTimer);
+  if ((globalThis as GlobalWithWatcher).__fileWatcherTimer) {
+    clearInterval((globalThis as GlobalWithWatcher).__fileWatcherTimer);
   }
 
   function poll() {
@@ -131,7 +133,7 @@ export default function (pi: ExtensionAPI) {
     } catch { /* use default on parse error */ }
 
     timer = setInterval(poll, interval);
-    (globalThis as any).__fileWatcherTimer = timer;
+    (globalThis as GlobalWithWatcher).__fileWatcherTimer = timer;
   });
 
   pi.on("session_shutdown", () => {
