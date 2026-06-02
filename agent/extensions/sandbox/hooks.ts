@@ -237,7 +237,11 @@ export function setupHooks(pi: ExtensionAPI) {
   let pendingContexts: string[] = [];
 
   pi.on("tool_result", async (event, _ctx) => {
-    const result = "result" in event ? event.result : undefined;
+    const result = {
+      content: event.content,
+      details: event.details,
+      isError: event.isError,
+    };
     const contexts = await hooks.runPostToolUse(
       event.toolName,
       event.input as Record<string, unknown>,
