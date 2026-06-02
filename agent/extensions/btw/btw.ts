@@ -14,14 +14,7 @@
 
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
-import * as os from "node:os";
-import * as path from "node:path";
-import {
-  convertToLlm,
-  type ExtensionAPI,
-  type ExtensionContext,
-  type SessionEntry,
-} from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { showBtwOverlay } from "./btw-ui";
 
 // ── Boundary prompt (following Codex /side pattern) ───────────────────
@@ -117,13 +110,6 @@ function getPiCommand(): { cmd: string; args: string[] } {
   return { cmd: "pi", args: [] };
 }
 
-async function writeTempPrompt(content: string): Promise<string> {
-  const tmpDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), "pi-btw-"));
-  const filePath = path.join(tmpDir, "boundary.md");
-  await fs.promises.writeFile(filePath, content, { encoding: "utf-8", mode: 0o600 });
-  return filePath;
-}
-
 export async function executeBtw(
   question: string,
   ctx: ExtensionContext,
@@ -135,130 +121,125 @@ export async function executeBtw(
   }
 
   const prompt = `${SIDE_BOUNDARY_PROMPT} ${question}`;
-  let tmpPath: string | null = null;
 
-  try {
-    tmpPath = await writeTempPrompt(prompt);
+  const pi = getPiCommand();
+  const args = [
+    "--fork",
+    sessionFile,
+    "-p",
+    "--mode",
+    "json",
+    "--no-extensions",
+    "--append-system-prompt",
+    prompt,
+    question,
+  ];
 
-    const pi = getPiCommand();
-    const args = [
-      "--fork",
-      sessionFile,
-      "-p",
-      "--mode",
-      "json",
-      "--no-extensions",
-      "--append-system-prompt",
-      tmpPath,
-      question,
-    ];
+  return await new Promise<BtwExecResult>((resolve) => {
+    const proc = spawn(pi.cmd, pi.args.concat(args), {
+      cwd: ctx.cwd,
+      stdio: ["ignore", "pipe", "pipe"],
+      env: { ...process.env, PI_SKIP_VERSION_CHECK: "1" },
+    });
 
-    return await new Promise<BtwExecResult>((resolve) => {
-      const proc = spawn(pi.cmd, pi.args.concat(args), {
-        cwd: ctx.cwd,
-        stdio: ["ignore", "pipe", "pipe"],
-        env: { ...process.env, PI_SKIP_VERSION_CHECK: "1" },
-      });
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    let lastAssistantText = "";
+    let aborted = false;
 
-      let stdout = "";
-      let stderr = "";
-      let settled = false;
-      let lastAssistantText = "";
-      let aborted = false;
+    const finish = (result: BtwExecResult) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeoutId);
+      controller.signal.removeEventListener("abort", onAbort);
+      try {
+        proc.kill("SIGTERM");
+      } catch {
+        /* already dead */
+      }
+      resolve(result);
+    };
 
-      const finish = (result: BtwExecResult) => {
-        if (settled) return;
-        settled = true;
-        clearTimeout(timeoutId);
-        controller.signal.removeEventListener("abort", onAbort);
+    const timeoutId = setTimeout(() => {
+      finish({ ok: false, error: "Timed out (60s)" });
+    }, 60000);
+
+    const onAbort = () => {
+      aborted = true;
+      finish({ ok: false, aborted: true });
+    };
+    controller.signal.addEventListener("abort", onAbort, { once: true });
+
+    proc.stdout?.on("data", (data: Buffer) => {
+      stdout += data.toString();
+      // Stream lines as they arrive
+      const lines = stdout.split("\n");
+      stdout = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.trim()) continue;
         try {
-          proc.kill("SIGTERM");
-        } catch { /* already dead */ }
-        resolve(result);
-      };
-
-      const timeoutId = setTimeout(() => {
-        finish({ ok: false, error: "Timed out (60s)" });
-      }, 60000);
-
-      const onAbort = () => {
-        aborted = true;
-        finish({ ok: false, aborted: true });
-      };
-      controller.signal.addEventListener("abort", onAbort, { once: true });
-
-      proc.stdout?.on("data", (data: Buffer) => {
-        stdout += data.toString();
-        // Stream lines as they arrive
-        const lines = stdout.split("\n");
-        stdout = lines.pop() ?? "";
-        for (const line of lines) {
-          if (!line.trim()) continue;
-          try {
-            const event = JSON.parse(line);
-            if (event.type === "message_end" && event.message?.role === "assistant") {
-              const content = event.message.content ?? [];
-              for (const part of content) {
-                if (part.type === "text") lastAssistantText += part.text;
-              }
+          const event = JSON.parse(line);
+          if (event.type === "message_end" && event.message?.role === "assistant") {
+            const content = event.message.content ?? [];
+            for (const part of content) {
+              if (part.type === "text") lastAssistantText += part.text;
             }
-          } catch { /* skip non-JSON lines */ }
+          }
+        } catch {
+          /* skip non-JSON lines */
         }
-      });
+      }
+    });
 
-      proc.stderr?.on("data", (data: Buffer) => {
-        stderr += data.toString();
-      });
+    proc.stderr?.on("data", (data: Buffer) => {
+      stderr += data.toString();
+    });
 
-      proc.on("close", (code) => {
-        clearTimeout(timeoutId);
-        if (settled) return;
+    proc.on("close", (code) => {
+      clearTimeout(timeoutId);
+      if (settled) return;
 
-        if (aborted) {
-          resolve({ ok: false, aborted: true });
-          return;
-        }
+      if (aborted) {
+        resolve({ ok: false, aborted: true });
+        return;
+      }
 
-        // Process any remaining output
-        if (stdout.trim()) {
-          try {
-            const event = JSON.parse(stdout.trim());
-            if (event.type === "message_end" && event.message?.role === "assistant") {
-              const content = event.message.content ?? [];
-              for (const part of content) {
-                if (part.type === "text") lastAssistantText += part.text;
-              }
+      // Process any remaining output
+      if (stdout.trim()) {
+        try {
+          const event = JSON.parse(stdout.trim());
+          if (event.type === "message_end" && event.message?.role === "assistant") {
+            const content = event.message.content ?? [];
+            for (const part of content) {
+              if (part.type === "text") lastAssistantText += part.text;
             }
-          } catch { /* skip */ }
+          }
+        } catch {
+          /* skip */
         }
+      }
 
-        const answer = lastAssistantText.trim();
-        if (answer) {
-          resolve({ ok: true, answer });
-        } else {
-          const errPreview = stderr.trim().slice(0, 200);
-          resolve({
-            ok: false,
-            error: code === 0
+      const answer = lastAssistantText.trim();
+      if (answer) {
+        resolve({ ok: true, answer });
+      } else {
+        const errPreview = stderr.trim().slice(0, 200);
+        resolve({
+          ok: false,
+          error:
+            code === 0
               ? "No answer produced"
               : `Fork exited ${code}${errPreview ? ": " + errPreview : ""}`,
-          });
-        }
-      });
-
-      proc.on("error", () => {
-        clearTimeout(timeoutId);
-        resolve({ ok: false, error: "Failed to start subprocess" });
-      });
+        });
+      }
     });
-  } finally {
-    if (tmpPath && fs.existsSync(tmpPath)) {
-      fs.unlinkSync(tmpPath);
-      // Clean up tmp dir
-      const tmpDir = path.dirname(tmpPath);
-      try { fs.rmdirSync(tmpDir); } catch { /* dir may have other files */ }
-    }
-  }
+
+    proc.on("error", () => {
+      clearTimeout(timeoutId);
+      resolve({ ok: false, error: "Failed to start subprocess" });
+    });
+  });
 }
 
 // ── Command handler ───────────────────────────────────────────────────
