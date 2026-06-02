@@ -3,6 +3,7 @@ import test from "node:test";
 import path from "node:path";
 
 const addContext = await import("./add-context.ts");
+const init = await import("./init.ts");
 const extensionsCmd = await import("./lib/extensions-cmd-helpers.ts");
 const rgFdOverride = await import("./lib/rg-fd-override-helpers.ts");
 const reviewMode = await import("./lib/review-mode-helpers.ts");
@@ -152,4 +153,33 @@ test("ask_user_question response includes notes", () => {
 
   assert.equal(result.content[0].text.includes("note: remember this"), true);
   assert.equal(result.details.cancelled, false);
+});
+
+test("init args parse empty, force, and help flags", () => {
+  assert.deepEqual(init.parseInitArgs(""), { force: false, help: false, errors: [] });
+  assert.deepEqual(init.parseInitArgs("--force"), { force: true, help: false, errors: [] });
+  assert.deepEqual(init.parseInitArgs("-f --help"), { force: true, help: true, errors: [] });
+});
+
+test("init args report unknown options", () => {
+  assert.deepEqual(init.parseInitArgs("--preview"), {
+    force: false,
+    help: false,
+    errors: ["Unknown option: --preview"],
+  });
+});
+
+test("init prompt targets AGENTS.md and preserves existing guidance", () => {
+  const prompt = init.buildInitPrompt("/workspace/project", true);
+
+  assert.equal(prompt.includes("Improve the existing `AGENTS.md`"), true);
+  assert.equal(prompt.includes("`/workspace/project/AGENTS.md`"), true);
+  assert.equal(prompt.includes("Preserve verified useful guidance"), true);
+});
+
+test("init prompt creates a new AGENTS.md when missing", () => {
+  const prompt = init.buildInitPrompt("/workspace/project", false);
+
+  assert.equal(prompt.includes("Create a new `AGENTS.md`"), true);
+  assert.equal(prompt.includes("Improve the existing `AGENTS.md`"), false);
 });

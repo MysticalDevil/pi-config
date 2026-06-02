@@ -1,103 +1,76 @@
-# .pi
+# pi-config
 
-## Tech Stack
+Personal pi coding-agent configuration for extensions, prompts, sandboxing,
+and installed pi packages.
+This repo is version-controlled at `git@github.com:MysticalDevil/pi-config.git`.
 
-- **Languages:** TypeScript
-- **Package Manager:** npm
+## Runtime Model
 
-## Project Structure
+- Custom extensions are TypeScript files loaded directly by pi from
+  `agent/extensions/`; there is no root `package.json` and no build step for
+  normal extension edits.
+- After editing extensions, run `/reload` inside pi.
+- Changes to `sandbox.json` require restarting the pi daemon, not just `/reload`.
+- `agent/extensions/sandbox/` is its own npm package
+  (`pi-extension-sandbox`) with a local `package.json`, but its scripts are
+  placeholders; do not assume a separate build/test workflow there.
 
-```
-├── agent/
-│   ├── agents/
-│   │   ├── planner.md
-│   │   ├── reviewer.md
-│   │   ├── scout.md
-│   │   ├── worker.md
-│   ├── extensions/
-│   │   ├── plan-mode/
-│   │   ├── sandbox/
-│   │   ├── add-context.ts
-│   │   ├── bookmark.ts
-│   │   ├── btw.ts
-│   │   ├── confirm-destructive.ts
-│   │   ├── cost.ts
-│   │   ├── custom-compaction.ts
-│   │   ├── dirty-repo-guard.ts
-│   │   ├── git-checkpoint.ts
-│   │   ├── handoff.ts
-│   │   ├── init.ts
-│   │   ├── memory.ts
-│   │   ├── model-status.ts
-│   │   ├── protected-paths.ts
-│   │   ├── review-mode.ts
-│   │   ├── session-name.ts
-│   │   ├── summarize.ts
-│   │   ├── theme.ts
-│   │   ├── todo.ts
-│   │   ├── tools.ts
-│   │   ├── workspace-detect.ts
-│   ├── prompts/
-│   │   ├── implement-and-review.md
-│   │   ├── implement.md
-│   │   ├── scout-and-plan.md
-│   ├── sessions/
-│   │   ├── --home-delta--/
-│   │   ├── --home-delta-.pi--/
-│   │   ├── --home-delta-ai-workspace--/
-│   │   ├── --home-delta-ai-workspace-global--/
-│   │   ├── --home-delta-Toys-ConicalRolling--/
-│   │   ├── --home-delta-Toys-slice_linq--/
-│   ├── skills/
-│   │   ├── zig-0-16-migration/
-│   ├── themes/
-│   │   ├── catppuccin-latte.json
-│   │   ├── catppuccin-mocha.json
-│   │   ├── dracula.json
-│   │   ├── gruvbox-dark.json
-│   │   ├── gruvbox-light.json
-│   │   ├── monokai.json
-│   │   ├── nord.json
-│   │   ├── one-dark.json
-│   │   ├── solarized-dark.json
-│   │   ├── solarized-light.json
-│   │   ├── tokyo-night.json
-│   ├── AGENTS.md
-│   ├── auth.json
-│   ├── settings.json
-├── .gitignore
-├── sandbox.json
-├── tsconfig.json
-```
+## Verification
 
-## Configuration Files
-
-- `sandbox.json`
-- `tsconfig.json`
-- `.gitignore`
-
-## Installed Packages
-
-- `npm:pi-subagents` — Subagent orchestration (single/chain/parallel/async) with 8 builtin agents (scout, planner, worker, reviewer, oracle, researcher, context-builder, delegate). Replaces the local `extensions/subagent/` implementation.
-- `npm:context-mode` — Context window protection via sandboxed execution (`ctx_execute`, `ctx_execute_file`, `ctx_search`, etc.). Zero config.
-- `npm:pi-web-access` — Web search and content fetching.
-- `npm:pi-mcp-adapter` — MCP server connectivity.
-
-## Conventions
-
-<!-- Add project-specific conventions here -->
-
-- `/btw` — fork-based side questions (refactored from completeSimple to pi --fork)
-- Run `npm test` (or equivalent) before committing
-- Keep commits small and focused
-- Write meaningful commit messages
-
-## Common Commands
+Use the project commands as written; this repo intentionally uses `npx` for
+the lint/format tools.
 
 ```bash
-npm install           # Install dependencies
-npm run dev           # Start dev server
-npm run build         # Build for production
-npm test              # Run tests
-npm run lint          # Run linter
+npx oxfmt@latest --write agent/extensions/
+npx oxlint@latest --tsconfig tsconfig.json
+node --test agent/extensions/regression.test.mjs
 ```
+
+Run the regression test after extension changes. It is the only checked-in
+test suite and covers path safety, fd/rg fallback behavior, extension-name
+validation, review revert safety, ask-user-question dialogs, and `/init`
+helpers.
+
+## Extension Boundaries
+
+- `agent/extensions/sandbox/` — permissions, execpolicy, guardian, hooks,
+  shell snapshot, turn diff, and sandbox integration.
+- `agent/extensions/btw/` — fork-based side questions for `/btw`.
+- `agent/extensions/plan-mode/` — read-only exploration mode and plan
+  execution flow.
+- `agent/extensions/ask-user-question/` — structured question dialog UI and
+  tool implementation.
+- `agent/extensions/lib/` — shared helper modules used by multiple extensions.
+- Most other files under `agent/extensions/` are single-file extensions; keep
+  new cross-extension logic in `agent/extensions/lib/` only when it is
+  actually shared.
+
+## Config Files
+
+| File | Purpose |
+| ---- | ------- |
+| `agent/AGENTS.md` | Global agent rules injected for pi sessions; do not weaken casually. |
+| `sandbox.json` | Project sandbox permissions and protected paths. |
+| `tsconfig.json` | Type-check scope for extensions; `noEmit: true`. |
+| `oxlint.config.ts` | Correctness errors, suspicious warnings, ignores installed packages. |
+| `oxfmt.config.ts` | Formatter ignores `node_modules` only. |
+
+## Installed Package Areas
+
+- `agent/npm/` contains installed pi npm packages such as `pi-subagents`,
+  `context-mode`, `pi-web-access`, and `pi-mcp-adapter`; it is intentionally
+  untracked.
+- `agent/git/` is also untracked and should be treated as installed or
+  third-party package state.
+- Other intentionally untracked local state includes `agent/auth.json`,
+  `agent/sessions/`, `agent/themes/`, `agent/skills/`, `agent/settings.json`,
+  `agent/models.json`, and `agent/memories.json`.
+
+## Command Notes
+
+- `/init` triggers an agent turn that investigates the current repository and
+  creates or updates `AGENTS.md`; use `/init --force` to skip the
+  existing-file confirmation.
+- `/btw` asks forked side questions without disturbing the main session.
+- Use Conventional Commit prefixes when committing repo changes: `feat:`,
+  `fix:`, `refactor:`, `chore:`, `docs:`.
