@@ -40,6 +40,7 @@ interface DialogState {
   // Show submit tab
   showSubmit: boolean;
   submitChoiceIndex: number;
+  collapsed: boolean;
 }
 
 interface DialogConfig {
@@ -73,6 +74,7 @@ export class QuestionnaireDialog {
       inputMode: null,
       showSubmit: this.questions.length > 1,
       submitChoiceIndex: 0,
+      collapsed: false,
     };
 
     // Build per-question preview renderers
@@ -107,6 +109,17 @@ export class QuestionnaireDialog {
   }
 
   handleInput(data: string): void {
+    if (data === "\x1d") {
+      this.state.collapsed = !this.state.collapsed;
+      return;
+    }
+
+    if (this.state.collapsed) {
+      if (matchesKey(data, "escape"))
+        this.done({ answers: this.collectAnswers(), cancelled: true });
+      return;
+    }
+
     if (this.state.inputMode) {
       this.handleTextInput(data);
       return;
@@ -250,6 +263,7 @@ export class QuestionnaireDialog {
 
   render(width: number): string[] {
     const th = this.theme;
+    if (this.state.collapsed) return this.renderCollapsed(width, th);
     if (this.isSubmitTab()) return this.renderSubmit(width, th);
 
     const q = this.currentQuestion();
@@ -312,6 +326,15 @@ export class QuestionnaireDialog {
   }
 
   // ── Private ─────────────────────────────────────────────────────────
+
+  private renderCollapsed(width: number, th: Theme): string[] {
+    return [
+      truncateToWidth(
+        ` ${th.fg("dim", "Ask User Question collapsed — Ctrl+] to expand, Esc to cancel")} `,
+        width,
+      ),
+    ];
+  }
 
   private currentQuestion(): QuestionData {
     return this.questions[Math.min(this.state.tabIndex, this.questions.length - 1)];
