@@ -1,12 +1,13 @@
 /**
- * Shell Snapshot — Capture shell environment state for context injection
+ * Shell Snapshot — Capture reliable agent shell context for injection
  *
  * After each bash command execution, captures:
- * - Working directory changes (cd detection)
- * - Key environment variables (filtered for safety)
+ * - Agent command working directory
+ * - Pi process environment variables (filtered for safety)
  *
  * The snapshot is injected as additional context before the next LLM turn,
- * helping the model understand the current shell state.
+ * helping the model understand the command execution context without
+ * pretending that subprocess cd/export changes persist in pi.
  *
  * Filtering:
  * - Excludes PWD, OLDPWD (tracked separately via cwd)
@@ -25,8 +26,6 @@ export interface ShellSnapshot {
   capturedAt: number;
   /** Key env vars (filtered) */
   env: Record<string, string>;
-  /** Last known directory (pre-cd detection) */
-  lastDir?: string;
   /** Number of captures in this session */
   captureCount: number;
 }
@@ -134,7 +133,7 @@ function captureEnv(maxVars: number = 40): Record<string, string> {
 // ── Snapshot management ──────────────────────────────────────────────
 
 let currentSnapshot: ShellSnapshot = {
-  cwd: process.cwd(),
+  cwd: "",
   capturedAt: Date.now(),
   env: {},
   captureCount: 0,
@@ -146,17 +145,13 @@ export function getSnapshot(): ShellSnapshot {
 
 /**
  * Capture a new snapshot. Called after each bash command.
- * Detects cd by comparing new cwd with last known directory.
+ * Uses pi's command working directory; bash subprocess cd/export changes do not persist.
  */
-export function captureSnapshot(newCwd?: string): ShellSnapshot {
-  const previousDir = currentSnapshot.cwd;
-  const cwd = newCwd ?? process.cwd();
-
+export function captureSnapshot(cwd: string): ShellSnapshot {
   currentSnapshot = {
     cwd,
     capturedAt: Date.now(),
     env: captureEnv(),
-    lastDir: previousDir !== cwd ? previousDir : currentSnapshot.lastDir,
     captureCount: currentSnapshot.captureCount + 1,
   };
 
@@ -170,19 +165,14 @@ export function captureSnapshot(newCwd?: string): ShellSnapshot {
 export function snapshotContextText(snap: ShellSnapshot): string | null {
   const lines: string[] = [];
 
-  // Working directory
-  lines.push(`Current working directory: ${snap.cwd}`);
+  // Command working directory
+  lines.push(`Command working directory: ${snap.cwd}`);
 
-  // cd detection
-  if (snap.lastDir) {
-    lines.push(`(Changed from: ${snap.lastDir})`);
-  }
-
-  // Key env vars (only show the important ones)
+  // Key pi process env vars (only show the important ones)
   const importantVars = Object.entries(snap.env).filter(([name]) => isKeptVar(name));
   if (importantVars.length > 0) {
     lines.push("");
-    lines.push("Environment:");
+    lines.push("Pi process environment:");
     for (const [name, value] of importantVars) {
       // Truncate long values
       const displayVal = value.length > 100 ? value.slice(0, 97) + "..." : value;
@@ -205,7 +195,7 @@ export function setupSnapshots(pi: ExtensionAPI) {
     if (event.toolName !== "bash") return;
 
     try {
-      captureSnapshot();
+      captureSnapshot(_ctx.cwd);
     } catch (e) {
       if (e instanceof Error && !e.message?.includes("aborted")) {
         console.error("shell-snapshot: capture failed:", e.message);
@@ -228,9 +218,9 @@ export function setupSnapshots(pi: ExtensionAPI) {
   });
 
   // Reset on new session
-  pi.on("session_start", async () => {
+  pi.on("session_start", async (_event, ctx) => {
     currentSnapshot = {
-      cwd: process.cwd(),
+      cwd: ctx.cwd,
       capturedAt: Date.now(),
       env: captureEnv(),
       captureCount: 0,
