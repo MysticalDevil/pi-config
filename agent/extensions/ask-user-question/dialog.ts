@@ -35,8 +35,9 @@ interface DialogState {
   chatAbandoned: Set<number>;
   // Multi-select mode tracking
   multiSelectPending: Map<number, Set<string>>;
-  // Input mode: null = selecting, "custom" = typing custom text
-  inputMode: { questionIndex: number; buffer: string } | null;
+  notes: Map<number, string>;
+  // Input mode: null = selecting, "custom"/"notes" = typing text
+  inputMode: { questionIndex: number; buffer: string; kind: "custom" | "notes" } | null;
   // Show submit tab
   showSubmit: boolean;
   submitChoiceIndex: number;
@@ -71,6 +72,7 @@ export class QuestionnaireDialog {
       customTexts: new Map(),
       chatAbandoned: new Set(),
       multiSelectPending: new Map(),
+      notes: new Map(),
       inputMode: null,
       showSubmit: this.questions.length > 1,
       submitChoiceIndex: 0,
@@ -176,6 +178,11 @@ export class QuestionnaireDialog {
       }
     }
 
+    if (data === "n" && this.focusedOptionHasPreview()) {
+      this.enterNotesMode();
+      return;
+    }
+
     // Single-select: Enter to select
     if (matchesKey(data, "enter")) {
       if (this.isOnCustomSentinel(items)) {
@@ -240,9 +247,16 @@ export class QuestionnaireDialog {
   private handleTextInput(data: string): void {
     if (!this.state.inputMode) return;
     if (matchesKey(data, "enter")) {
-      const text = this.state.inputMode.buffer.trim();
+      const input = this.state.inputMode;
+      const text = input.buffer.trim();
+      if (input.kind === "notes") {
+        if (text) this.state.notes.set(input.questionIndex, text);
+        else this.state.notes.delete(input.questionIndex);
+        this.state.inputMode = null;
+        return;
+      }
       if (text) {
-        this.state.customTexts.set(this.state.inputMode.questionIndex, text);
+        this.state.customTexts.set(input.questionIndex, text);
       }
       this.state.inputMode = null;
       this.advanceOrSubmit();
@@ -371,7 +385,23 @@ export class QuestionnaireDialog {
   }
 
   private enterCustomMode(): void {
-    this.state.inputMode = { questionIndex: this.state.tabIndex, buffer: "" };
+    this.state.inputMode = { questionIndex: this.state.tabIndex, buffer: "", kind: "custom" };
+  }
+
+  private enterNotesMode(): void {
+    this.state.inputMode = {
+      questionIndex: this.state.tabIndex,
+      buffer: this.state.notes.get(this.state.tabIndex) ?? "",
+      kind: "notes",
+    };
+  }
+
+  private focusedOptionHasPreview(): boolean {
+    if (this.state.chatFocused || this.state.tabIndex >= this.questions.length) return false;
+    const q = this.currentQuestion();
+    if (q.multiSelect) return false;
+    const opt = q.options[this.state.optionIndex];
+    return typeof opt?.preview === "string" && opt.preview.length > 0;
   }
 
   private toggleMultiSelect(): void {
@@ -473,6 +503,7 @@ export class QuestionnaireDialog {
           question: q.question,
           kind: "option",
           answer: sel[0],
+          notes: this.state.notes.get(i),
           preview: opt?.preview,
         });
       }
@@ -486,6 +517,7 @@ export class QuestionnaireDialog {
       parts.push("Space toggle   Enter next");
     } else {
       parts.push("↑↓ navigate   Enter select");
+      if (this.focusedOptionHasPreview()) parts.push("n notes");
     }
     if (this.questions.length > 1) parts.push("Tab next question");
     parts.push("Esc cancel");
@@ -520,7 +552,8 @@ export class QuestionnaireDialog {
       lines.push("");
       const buf = this.state.inputMode.buffer || "";
       const cursor = buf + th.fg("accent", "▌");
-      lines.push(truncateToWidth(`${pad}  ${th.fg("dim", "Type: ")}${cursor}`, width));
+      const label = this.state.inputMode.kind === "notes" ? "Notes: " : "Type: ";
+      lines.push(truncateToWidth(`${pad}  ${th.fg("dim", label)}${cursor}`, width));
     }
 
     return lines;

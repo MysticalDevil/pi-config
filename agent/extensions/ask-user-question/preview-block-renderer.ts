@@ -12,6 +12,7 @@ import {
   MAX_PREVIEW_HEIGHT_SIDE_BY_SIDE,
   MAX_PREVIEW_HEIGHT_STACKED,
   MarkdownContentCache,
+  NOTES_AFFORDANCE_OVERHEAD,
 } from "./markdown-content-cache";
 import {
   BORDER_HORIZONTAL_OVERHEAD,
@@ -21,6 +22,8 @@ import {
   renderBorderedBox,
 } from "./preview-box-renderer";
 import type { PreviewLayoutMode } from "./preview-layout-decider";
+
+export const NOTES_AFFORDANCE_TEXT = "Notes: press n to add notes";
 
 export interface PreviewBlockRendererConfig {
   question: QuestionData;
@@ -60,28 +63,28 @@ export class PreviewBlockRenderer {
   blockHeight(width: number, optionIndex: number, mode: PreviewLayoutMode): number {
     const cap =
       mode === "side-by-side" ? MAX_PREVIEW_HEIGHT_SIDE_BY_SIDE : MAX_PREVIEW_HEIGHT_STACKED;
-    const contentBudget = Math.max(1, cap - BORDER_VERTICAL_OVERHEAD);
+    const contentBudget = Math.max(1, cap - BORDER_VERTICAL_OVERHEAD - NOTES_AFFORDANCE_OVERHEAD);
     const innerWidth = Math.max(
       1,
       width - BORDER_HORIZONTAL_OVERHEAD - 2 * BORDER_INNER_PADDING_HORIZONTAL,
     );
     const rawRows = this.cache.bodyFor(optionIndex, innerWidth).length;
     const contentRows = Math.min(rawRows, contentBudget);
-    return BORDER_VERTICAL_OVERHEAD + contentRows;
+    return BORDER_VERTICAL_OVERHEAD + contentRows + NOTES_AFFORDANCE_OVERHEAD;
   }
 
   /**
-   * Render the full preview block at `width`.
+   * Render the full preview block at `width`: bordered box + blank separator + affordance row.
    */
   renderBlock(
     width: number,
     optionIndex: number,
     mode: PreviewLayoutMode,
-    _focused: boolean,
+    focused: boolean,
   ): string[] {
     const cap =
       mode === "side-by-side" ? MAX_PREVIEW_HEIGHT_SIDE_BY_SIDE : MAX_PREVIEW_HEIGHT_STACKED;
-    const contentBudget = Math.max(1, cap - BORDER_VERTICAL_OVERHEAD);
+    const contentBudget = Math.max(1, cap - BORDER_VERTICAL_OVERHEAD - NOTES_AFFORDANCE_OVERHEAD);
     const maxInnerWidth = Math.max(
       1,
       width - BORDER_HORIZONTAL_OVERHEAD - 2 * BORDER_INNER_PADDING_HORIZONTAL,
@@ -94,6 +97,10 @@ export class PreviewBlockRenderer {
 
     const { boxWidth } = computeBoxDimensions(contentLines, maxInnerWidth);
     const colorFn = (s: string) => this.theme.fg("accent", s);
-    return renderBorderedBox(contentLines, boxWidth, colorFn, hidden);
+    const boxedLines = renderBorderedBox(contentLines, boxWidth, colorFn, hidden);
+
+    const showAffordance = focused && this.cache.has(optionIndex);
+    const affordance = showAffordance ? this.theme.fg("muted", NOTES_AFFORDANCE_TEXT) : "";
+    return [...boxedLines, "", affordance];
   }
 }
