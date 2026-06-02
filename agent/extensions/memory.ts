@@ -142,7 +142,10 @@ export default function (pi: ExtensionAPI) {
             createdAt: Date.now(),
             updatedAt: Date.now(),
           };
-          const merged = saveAndMerge((m) => { m.push(newMem); return m; });
+          saveAndMerge((storedMemories) => {
+            storedMemories.push(newMem);
+            return storedMemories;
+          });
           return {
             content: [{ type: "text", text: `✅ Saved: "${params.text}" (${newMem.id})` }],
             details: { action: "save", memory: newMem },
@@ -211,10 +214,10 @@ export default function (pi: ExtensionAPI) {
             };
           }
           let removed: Memory | undefined;
-          const merged = saveAndMerge((memories) => {
-            const idx = memories.findIndex((m) => m.id === params.id);
-            if (idx !== -1) removed = memories.splice(idx, 1)[0];
-            return memories;
+          saveAndMerge((storedMemories) => {
+            const idx = storedMemories.findIndex((m) => m.id === params.id);
+            if (idx !== -1) removed = storedMemories.splice(idx, 1)[0];
+            return storedMemories;
           });
           if (!removed) {
             return {
@@ -290,7 +293,10 @@ export default function (pi: ExtensionAPI) {
             createdAt: Date.now(),
             updatedAt: Date.now(),
           };
-          saveAndMerge((m) => { m.push(newMem); return m; });
+          saveAndMerge((m) => {
+            m.push(newMem);
+            return m;
+          });
           ctx.ui.notify(`Saved: "${text}"`, "info");
           break;
         }
@@ -324,12 +330,12 @@ export default function (pi: ExtensionAPI) {
             return;
           }
           let removedText = "";
-          saveAndMerge((memories) => {
-            const idx = memories.findIndex((m) => m.id.startsWith(rest));
-            if (idx === -1) return memories;
-            removedText = memories[idx].text;
-            memories.splice(idx, 1);
-            return memories;
+          saveAndMerge((storedMemories) => {
+            const idx = storedMemories.findIndex((m) => m.id.startsWith(rest));
+            if (idx === -1) return storedMemories;
+            removedText = storedMemories[idx].text;
+            storedMemories.splice(idx, 1);
+            return storedMemories;
           });
           if (!removedText) {
             ctx.ui.notify(`No memory with id starting with "${rest}"`, "warning");
