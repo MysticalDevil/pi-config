@@ -350,7 +350,8 @@ class TodoOverlay {
 
   update(ctx: ExtensionContext, state: AppState): void {
     const visible = state.tasks.filter((t) => t.status !== "deleted");
-    if (visible.length === 0) {
+    const allCompleted = visible.length > 0 && visible.every((t) => t.status === "completed");
+    if (visible.length === 0 || allCompleted) {
       if (this.registered) {
         ctx.ui.setWidget(WIDGET_KEY, undefined);
         this.registered = false;
