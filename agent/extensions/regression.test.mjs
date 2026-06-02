@@ -6,6 +6,8 @@ const addContext = await import("./add-context.ts");
 const extensionsCmd = await import("./lib/extensions-cmd-helpers.ts");
 const rgFdOverride = await import("./lib/rg-fd-override-helpers.ts");
 const reviewMode = await import("./lib/review-mode-helpers.ts");
+const askDialogHelpers = await import("./ask-user-question/dialog-helpers.ts");
+const askResponse = await import("./ask-user-question/response.ts");
 
 test("resolveWorkspacePath rejects paths outside cwd", () => {
   const cwd = "/workspace/project";
@@ -99,4 +101,55 @@ test("review revert paths stay inside repository", () => {
   );
   assert.equal(reviewMode.resolveRepoFilePath(cwd, "../file.ts"), undefined);
   assert.equal(reviewMode.resolveRepoFilePath(cwd, "/etc/passwd"), undefined);
+});
+
+test("ask_user_question custom row is suppressed when previews are present", () => {
+  const withPreview = {
+    question: "Choose?",
+    header: "Choice",
+    options: [
+      { label: "A", description: "A", preview: "preview A" },
+      { label: "B", description: "B" },
+    ],
+  };
+  const withoutPreview = {
+    question: "Choose?",
+    header: "Choice",
+    options: [
+      { label: "A", description: "A" },
+      { label: "B", description: "B" },
+    ],
+  };
+
+  assert.equal(askDialogHelpers.shouldShowCustomRow(withPreview), false);
+  assert.equal(askDialogHelpers.shouldShowCustomRow(withoutPreview), true);
+});
+
+test("ask_user_question submit tab adds one extra tab", () => {
+  assert.equal(askDialogHelpers.totalDialogTabs(2, true), 3);
+  assert.equal(askDialogHelpers.totalDialogTabs(2, false), 2);
+});
+
+test("ask_user_question recognizes Ctrl+] collapse toggle", () => {
+  assert.equal(askDialogHelpers.isCollapseToggle("\x1d"), true);
+  assert.equal(askDialogHelpers.isCollapseToggle("\t"), false);
+});
+
+test("ask_user_question response includes notes", () => {
+  const result = askResponse.buildResponse({
+    cancelled: false,
+    answers: [
+      {
+        questionIndex: 0,
+        question: "Choose?",
+        kind: "option",
+        answer: "A",
+        notes: "remember this",
+        preview: "preview A",
+      },
+    ],
+  });
+
+  assert.equal(result.content[0].text.includes("note: remember this"), true);
+  assert.equal(result.details.cancelled, false);
 });

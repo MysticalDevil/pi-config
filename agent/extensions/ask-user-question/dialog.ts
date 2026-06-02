@@ -16,6 +16,13 @@ import {
   SENTINEL_NEXT,
   SENTINEL_OTHER,
 } from "./types";
+import {
+  formatSubmitAnswerValue,
+  isCollapseToggle,
+  questionHasPreview,
+  shouldShowCustomRow,
+  totalDialogTabs,
+} from "./dialog-helpers";
 import { PreviewBlockRenderer } from "./preview-block-renderer";
 import {
   decideLayout,
@@ -100,10 +107,7 @@ export class QuestionnaireDialog {
   private computeAdaptiveLeft(paneWidth: number): number {
     const tabs = this.questions.map((q) => {
       const labels = q.options.map((o) => o.label);
-      const hasPreview = q.options.some(
-        (o) => typeof o.preview === "string" && o.preview.length > 0,
-      );
-      if (!q.multiSelect && !hasPreview) labels.push(SENTINEL_OTHER);
+      if (shouldShowCustomRow(q)) labels.push(SENTINEL_OTHER);
       if (q.multiSelect) labels.push(SENTINEL_NEXT);
       return { multiSelect: q.multiSelect, labels };
     });
@@ -111,7 +115,7 @@ export class QuestionnaireDialog {
   }
 
   handleInput(data: string): void {
-    if (data === "\x1d") {
+    if (isCollapseToggle(data)) {
       this.state.collapsed = !this.state.collapsed;
       return;
     }
@@ -355,7 +359,7 @@ export class QuestionnaireDialog {
   }
 
   private totalTabs(): number {
-    return this.state.showSubmit ? this.questions.length + 1 : this.questions.length;
+    return totalDialogTabs(this.questions.length, this.state.showSubmit);
   }
 
   private isSubmitTab(): boolean {
@@ -370,8 +374,7 @@ export class QuestionnaireDialog {
 
   private buildOptionList(q: QuestionData): string[] {
     const labels = q.options.map((o) => o.label);
-    const hasPreview = q.options.some((o) => typeof o.preview === "string" && o.preview.length > 0);
-    if (!q.multiSelect && !hasPreview) labels.push(SENTINEL_OTHER);
+    if (shouldShowCustomRow(q)) labels.push(SENTINEL_OTHER);
     if (q.multiSelect) labels.push(SENTINEL_NEXT);
     return labels;
   }
@@ -401,7 +404,7 @@ export class QuestionnaireDialog {
     const q = this.currentQuestion();
     if (q.multiSelect) return false;
     const opt = q.options[this.state.optionIndex];
-    return typeof opt?.preview === "string" && opt.preview.length > 0;
+    return opt ? questionHasPreview({ ...q, options: [opt] }) : false;
   }
 
   private toggleMultiSelect(): void {
@@ -588,7 +591,7 @@ export class QuestionnaireDialog {
       lines.push(truncateToWidth(`    ${th.fg("warning", "No answers yet.")}`, width));
     } else {
       for (const answer of answers) {
-        const value = answer.kind === "multi" ? answer.selected?.join(", ") : answer.answer;
+        const value = formatSubmitAnswerValue(answer);
         lines.push(
           truncateToWidth(
             `    ${th.fg("success", "✓")} ${answer.question} ${th.fg("dim", "=")} ${value ?? ""}`,
