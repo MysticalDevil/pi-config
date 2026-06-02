@@ -22,7 +22,11 @@ import { parseStatusLine } from "./lib/shared";
 function makeBaseline(cwd: string): Map<string, string | null> {
   const map = new Map<string, string | null>();
   try {
-    const out = execSync("git status --porcelain=v1", { cwd, encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] });
+    const out = execSync("git status --porcelain=v1", {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
     for (const line of out.trim().split("\n")) {
       if (!line) continue;
 
@@ -57,6 +61,18 @@ function makeBaseline(cwd: string): Map<string, string | null> {
   return map;
 }
 
+function getHead(cwd: string): string | null {
+  try {
+    return execFileSync("git", ["rev-parse", "HEAD"], {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+  } catch {
+    return null;
+  }
+}
+
 function diffGit(before: Map<string, string | null>, after: Map<string, string | null>): string[] {
   const changes: string[] = [];
   for (const [path, hash] of after) {
@@ -83,9 +99,12 @@ function diffGit(before: Map<string, string | null>, after: Map<string, string |
 export default function (pi: ExtensionAPI) {
   let cwd = "";
   let baseline = new Map<string, string | null>();
+  let headBaseline: string | null = null;
   let timer: ReturnType<typeof setInterval> | null = null;
 
-type GlobalWithWatcher = typeof globalThis & { __fileWatcherTimer?: ReturnType<typeof setInterval> };
+  type GlobalWithWatcher = typeof globalThis & {
+    __fileWatcherTimer?: ReturnType<typeof setInterval>;
+  };
 
   // Global guard: prevent duplicate watchers across reloads
   if ((globalThis as GlobalWithWatcher).__fileWatcherTimer) {
@@ -95,13 +114,17 @@ type GlobalWithWatcher = typeof globalThis & { __fileWatcherTimer?: ReturnType<t
   function poll() {
     if (!cwd) return;
     const current = makeBaseline(cwd);
-    if (baseline.size === 0) {
-      baseline = current;
-      return;
-    }
+    const currentHead = getHead(cwd);
 
     const changes = diffGit(baseline, current);
+    if (headBaseline !== currentHead) {
+      const before = headBaseline ? headBaseline.slice(0, 8) : "none";
+      const after = currentHead ? currentHead.slice(0, 8) : "none";
+      changes.unshift(`↻ HEAD ${before} → ${after}`);
+    }
+
     baseline = current;
+    headBaseline = currentHead;
 
     if (changes.length > 0 && changes.length <= 15) {
       pi.sendMessage(
@@ -118,6 +141,7 @@ type GlobalWithWatcher = typeof globalThis & { __fileWatcherTimer?: ReturnType<t
   pi.on("session_start", async (_event, ctx) => {
     cwd = ctx.cwd;
     baseline = makeBaseline(cwd);
+    headBaseline = getHead(cwd);
     if (timer) clearInterval(timer);
 
     // Read poll interval from settings
@@ -126,11 +150,16 @@ type GlobalWithWatcher = typeof globalThis & { __fileWatcherTimer?: ReturnType<t
       const settingsPath = join(homedir(), ".pi", "agent", "settings.json");
       if (existsSync(settingsPath)) {
         const settings = JSON.parse(readFileSync(settingsPath, "utf-8"));
-        if (typeof settings.fileWatcher?.pollIntervalMs === "number" && settings.fileWatcher.pollIntervalMs >= 1000) {
+        if (
+          typeof settings.fileWatcher?.pollIntervalMs === "number" &&
+          settings.fileWatcher.pollIntervalMs >= 1000
+        ) {
           interval = settings.fileWatcher.pollIntervalMs;
         }
       }
-    } catch { /* use default on parse error */ }
+    } catch {
+      /* use default on parse error */
+    }
 
     timer = setInterval(poll, interval);
     (globalThis as GlobalWithWatcher).__fileWatcherTimer = timer;
@@ -142,5 +171,6 @@ type GlobalWithWatcher = typeof globalThis & { __fileWatcherTimer?: ReturnType<t
       timer = null;
     }
     baseline.clear();
+    headBaseline = null;
   });
 }
