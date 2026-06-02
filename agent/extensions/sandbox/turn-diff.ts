@@ -51,7 +51,11 @@ function isGitRepo(cwd: string): boolean {
 
 function getHeadSha(cwd: string): string {
   try {
-    return execSync("git rev-parse HEAD", { cwd, encoding: "utf-8", stdio: ["ignore", "pipe", "ignore"] }).trim();
+    return execSync("git rev-parse HEAD", {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
   } catch (e) {
     if (e instanceof Error && !e.message.includes("not a git repository")) {
       console.error("turn-diff: git rev-parse failed:", e.message);

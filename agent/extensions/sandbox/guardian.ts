@@ -218,12 +218,27 @@ export async function guardianReview(
           let end = -1;
           for (let i = firstBrace; i < text.length; i++) {
             const ch = text[i];
-            if (escape) { escape = false; continue; }
-            if (ch === "\\") { escape = true; continue; }
-            if (ch === '"') { inString = !inString; continue; }
+            if (escape) {
+              escape = false;
+              continue;
+            }
+            if (ch === "\\") {
+              escape = true;
+              continue;
+            }
+            if (ch === '"') {
+              inString = !inString;
+              continue;
+            }
             if (inString) continue;
             if (ch === "{") depth++;
-            else if (ch === "}") { depth--; if (depth === 0) { end = i + 1; break; } }
+            else if (ch === "}") {
+              depth--;
+              if (depth === 0) {
+                end = i + 1;
+                break;
+              }
+            }
           }
           if (end > firstBrace) {
             parsed = parseJsonSafely(text.slice(firstBrace, end));
@@ -232,17 +247,17 @@ export async function guardianReview(
       }
 
       if (parsed) {
-          const outcome = parsed.outcome?.toLowerCase();
-          if (outcome === "allow" || outcome === "deny") {
-            finish({
-              outcome: outcome as "allow" | "deny",
-              riskLevel: parsed.risk_level?.toLowerCase() as GuardianResult["riskLevel"],
-              userAuthorization:
-                parsed.user_authorization?.toLowerCase() as GuardianResult["userAuthorization"],
-              reason: parsed.rationale ?? `Guardian: ${outcome}`,
-            });
-            return;
-          }
+        const outcome = parsed.outcome?.toLowerCase();
+        if (outcome === "allow" || outcome === "deny") {
+          finish({
+            outcome: outcome as "allow" | "deny",
+            riskLevel: parsed.risk_level?.toLowerCase() as GuardianResult["riskLevel"],
+            userAuthorization:
+              parsed.user_authorization?.toLowerCase() as GuardianResult["userAuthorization"],
+            reason: parsed.rationale ?? `Guardian: ${outcome}`,
+          });
+          return;
+        }
       }
 
       // Failed to parse — log stderr for diagnostics, then conservative deny

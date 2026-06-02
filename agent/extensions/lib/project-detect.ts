@@ -163,9 +163,7 @@ export function detectContainer(dir: string): string | undefined {
 const DETECTORS = [detectNode, detectRust, detectPython, detectGo, detectZig];
 
 export function detectAll(dir: string): ProjectInfo {
-  const results = DETECTORS.map((fn) => fn(dir)).filter(
-    (r): r is ProjectInfo => r !== null,
-  );
+  const results = DETECTORS.map((fn) => fn(dir)).filter((r): r is ProjectInfo => r !== null);
 
   if (results.length === 0) {
     return { languages: ["unknown"], keyFiles: [] };
