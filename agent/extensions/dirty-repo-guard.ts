@@ -28,6 +28,7 @@ async function checkDirtyRepo(
   // Check for uncommitted changes. Suppress stderr to avoid
   // leaking git hook/submodule warnings to the terminal.
   const { stdout, code } = await pi.exec("git", ["status", "--porcelain"], {
+    cwd: ctx.cwd,
     stdio: ["ignore", "pipe", "pipe"],
   });
 

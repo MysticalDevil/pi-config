@@ -27,6 +27,7 @@ import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Key } from "@earendil-works/pi-tui";
 
+import { resolveRepoFilePath } from "./lib/review-mode-helpers.ts";
 import { parseStatusLine } from "./lib/shared";
 
 function isGitRepo(cwd: string): boolean {
@@ -147,6 +148,39 @@ export default function (pi: ExtensionAPI) {
       status === "added" ? ["diff", "--no-index", "/dev/null", file] : ["diff", "--", file];
     const { stdout } = await pi.exec("git", args, { cwd });
     return stdout || "(no diff available)";
+  }
+
+  async function isTracked(cwd: string, file: string): Promise<boolean> {
+    const { code } = await pi.exec("git", ["ls-files", "--error-unmatch", "--", file], { cwd });
+    return code === 0;
+  }
+
+  async function revertFile(
+    cwd: string,
+    file: string,
+    status: FileChange["status"],
+  ): Promise<void> {
+    const fullPath = resolveRepoFilePath(cwd, file);
+    if (!fullPath) {
+      throw new Error(`Refusing to revert path outside repository: ${file}`);
+    }
+
+    if (status === "added") {
+      if (await isTracked(cwd, file)) {
+        await pi.exec("git", ["reset", "--", file], { cwd });
+      }
+
+      if (fs.existsSync(fullPath)) {
+        const stat = fs.lstatSync(fullPath);
+        if (!stat.isFile() && !stat.isSymbolicLink()) {
+          throw new Error(`Refusing to remove non-file path: ${file}`);
+        }
+        fs.unlinkSync(fullPath);
+      }
+      return;
+    }
+
+    await pi.exec("git", ["checkout", "--", file], { cwd });
   }
 
   function updateStatus(ctx: ExtensionContext): void {
@@ -287,7 +321,25 @@ export default function (pi: ExtensionAPI) {
       // Revert specific file
       if (tokens[0] === "--revert" && tokens[1]) {
         const file = tokens[1];
-        await pi.exec("git", ["checkout", "--", file], { cwd: ctx.cwd });
+        const change = (await getChanges(ctx.cwd)).find((c) => c.file === file);
+        if (!change) {
+          ctx.ui.notify(`No changed file matching: ${file}`, "warning");
+          return;
+        }
+
+        const confirmed = await ctx.ui.confirm(
+          "Revert changes?",
+          `This will revert all changes to ${file}. This cannot be undone.`,
+        );
+        if (!confirmed) return;
+
+        try {
+          await revertFile(ctx.cwd, file, change.status);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          ctx.ui.notify(`Revert failed: ${message}`, "error");
+          return;
+        }
         state.changes = state.changes.filter((c) => c.file !== file);
         state.acceptedFiles.delete(file);
         state.rejectedFiles.delete(file);
@@ -389,9 +441,13 @@ export default function (pi: ExtensionAPI) {
           if (!confirmed) continue;
           state.rejectedFiles.add(change.file);
           state.acceptedFiles.delete(change.file);
-          await pi.exec("git", ["checkout", "--", change.file], {
-            cwd: ctx.cwd,
-          });
+          try {
+            await revertFile(ctx.cwd, change.file, change.status);
+          } catch (error) {
+            const message = error instanceof Error ? error.message : String(error);
+            ctx.ui.notify(`Reject failed: ${message}`, "error");
+            state.rejectedFiles.delete(change.file);
+          }
         } else if (decision === "view") {
           // Show full diff
           const fullDiff = await getFileDiff(ctx.cwd, change.file, change.status);

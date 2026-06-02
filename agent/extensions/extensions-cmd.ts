@@ -14,6 +14,7 @@ import { existsSync, readdirSync, renameSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
+import { isSafeExtensionName } from "./lib/extensions-cmd-helpers.ts";
 
 interface ExtInfo {
   name: string;
@@ -56,6 +57,7 @@ function scanExtensions(cwd: string): ExtInfo[] {
       }
 
       if (entryStat.isDirectory()) {
+        if (!isSafeExtensionName(entry)) continue;
         const indexFile = join(path, entry, "index.ts");
         const disabledFile = join(path, entry, "index.ts.disabled");
         if (existsSync(indexFile)) {
@@ -68,14 +70,18 @@ function scanExtensions(cwd: string): ExtInfo[] {
 
       // Handle file extensions
       if (entry.endsWith(".ts")) {
+        const name = entry.replace(/\.ts$/, "");
+        if (!isSafeExtensionName(name)) continue;
         record({
-          name: entry.replace(/\.ts$/, ""),
+          name,
           enabled: true,
           source,
         });
       } else if (entry.endsWith(".ts.disabled")) {
+        const name = entry.replace(/\.ts\.disabled$/, "");
+        if (!isSafeExtensionName(name)) continue;
         record({
-          name: entry.replace(/\.ts\.disabled$/, ""),
+          name,
           enabled: false,
           source,
         });
@@ -92,6 +98,8 @@ function toggleExtension(
   enable: boolean,
   preferSource?: "global" | "project",
 ): string | null {
+  if (!isSafeExtensionName(name)) return null;
+
   const dirs = [
     { path: join(cwd, ".pi", "extensions"), source: "project" as const },
     { path: join(getAgentDir(), "extensions"), source: "global" as const },
@@ -181,6 +189,10 @@ export default function (pi: ExtensionAPI) {
 
       const match = rawName.match(/^(.+?)@(project|global)$/);
       const name = match ? match[1] : rawName;
+      if (!isSafeExtensionName(name)) {
+        ctx.ui.notify(`Invalid extension name: ${name}`, "error");
+        return;
+      }
 
       const exts = scanExtensions(ctx.cwd);
       const matching = exts.filter((e) => e.name === name);

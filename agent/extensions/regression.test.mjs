@@ -3,7 +3,9 @@ import test from "node:test";
 import path from "node:path";
 
 const addContext = await import("./add-context.ts");
+const extensionsCmd = await import("./lib/extensions-cmd-helpers.ts");
 const rgFdOverride = await import("./lib/rg-fd-override-helpers.ts");
+const reviewMode = await import("./lib/review-mode-helpers.ts");
 
 test("resolveWorkspacePath rejects paths outside cwd", () => {
   const cwd = "/workspace/project";
@@ -79,4 +81,22 @@ test("system find fallback uses path matching for slash-containing globs", () =>
 
   assert.ok(built.args.includes("-path"));
   assert.ok(built.args.includes("*/**/*.json"));
+});
+
+test("extension names reject path traversal and separators", () => {
+  assert.equal(extensionsCmd.isSafeExtensionName("dirty-repo-guard"), true);
+  assert.equal(extensionsCmd.isSafeExtensionName("../dirty-repo-guard"), false);
+  assert.equal(extensionsCmd.isSafeExtensionName("dir/plugin"), false);
+  assert.equal(extensionsCmd.isSafeExtensionName(".hidden"), false);
+});
+
+test("review revert paths stay inside repository", () => {
+  const cwd = "/workspace/project";
+
+  assert.equal(
+    reviewMode.resolveRepoFilePath(cwd, "src/file.ts"),
+    "/workspace/project/src/file.ts",
+  );
+  assert.equal(reviewMode.resolveRepoFilePath(cwd, "../file.ts"), undefined);
+  assert.equal(reviewMode.resolveRepoFilePath(cwd, "/etc/passwd"), undefined);
 });

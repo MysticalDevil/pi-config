@@ -112,6 +112,11 @@ export class QuestionnaireDialog {
       return;
     }
 
+    if (this.isSubmitTab()) {
+      this.handleSubmitInput(data);
+      return;
+    }
+
     const q = this.currentQuestion();
     const items = this.buildOptionList(q);
 
@@ -191,12 +196,31 @@ export class QuestionnaireDialog {
       return;
     }
 
-    // Tab to next question
+    // Tab to next question / submit tab
     if (matchesKey(data, "tab") && this.questions.length > 1) {
-      this.state.tabIndex = (this.state.tabIndex + 1) % this.questions.length;
-      this.state.optionIndex = 0;
-      this.state.chatFocused = false;
+      this.switchTab((this.state.tabIndex + 1) % this.totalTabs());
       return;
+    }
+  }
+
+  private handleSubmitInput(data: string): void {
+    if (matchesKey(data, "escape")) {
+      this.done({ answers: this.collectAnswers(), cancelled: true });
+      return;
+    }
+    if (matchesKey(data, "tab") && this.questions.length > 1) {
+      this.switchTab((this.state.tabIndex + 1) % this.totalTabs());
+      return;
+    }
+    if (matchesKey(data, "up") || matchesKey(data, "down")) {
+      this.state.submitChoiceIndex = this.state.submitChoiceIndex === 0 ? 1 : 0;
+      return;
+    }
+    if (matchesKey(data, "enter")) {
+      this.done({
+        answers: this.collectAnswers(),
+        cancelled: this.state.submitChoiceIndex === 1,
+      });
     }
   }
 
@@ -226,6 +250,8 @@ export class QuestionnaireDialog {
 
   render(width: number): string[] {
     const th = this.theme;
+    if (this.isSubmitTab()) return this.renderSubmit(width, th);
+
     const q = this.currentQuestion();
     const items = this.buildOptionList(q);
     const previewBlock = this.previewBlocks.get(this.state.tabIndex);
@@ -251,16 +277,7 @@ export class QuestionnaireDialog {
 
     // Tab bar (multi-question)
     if (this.questions.length > 1) {
-      const tabs = this.questions.map((tq, i) => {
-        const answered =
-          this.state.selections.has(i) ||
-          this.state.customTexts.has(i) ||
-          this.state.chatAbandoned.has(i);
-        const marker = answered ? "✓" : i === this.state.tabIndex ? "●" : "○";
-        return i === this.state.tabIndex
-          ? th.fg("accent", `${marker} ${tq.header}`)
-          : th.fg("dim", `${marker} ${tq.header}`);
-      });
+      const tabs = this.tabLabels(th);
       lines.push(truncateToWidth(`${pad}${tabs.join(" │ ")}`, width));
       lines.push("");
     }
@@ -297,7 +314,21 @@ export class QuestionnaireDialog {
   // ── Private ─────────────────────────────────────────────────────────
 
   private currentQuestion(): QuestionData {
-    return this.questions[this.state.tabIndex];
+    return this.questions[Math.min(this.state.tabIndex, this.questions.length - 1)];
+  }
+
+  private totalTabs(): number {
+    return this.state.showSubmit ? this.questions.length + 1 : this.questions.length;
+  }
+
+  private isSubmitTab(): boolean {
+    return this.state.showSubmit && this.state.tabIndex === this.questions.length;
+  }
+
+  private switchTab(tabIndex: number): void {
+    this.state.tabIndex = tabIndex;
+    this.state.optionIndex = 0;
+    this.state.chatFocused = false;
   }
 
   private buildOptionList(q: QuestionData): string[] {
@@ -352,7 +383,8 @@ export class QuestionnaireDialog {
         !this.state.chatAbandoned.has(i),
     );
     if (remaining.length === 0) {
-      this.done({ answers: this.collectAnswers(), cancelled: false });
+      if (this.state.showSubmit) this.switchTab(this.questions.length);
+      else this.done({ answers: this.collectAnswers(), cancelled: false });
       return;
     }
     for (let i = 1; i <= this.questions.length; i++) {
@@ -362,13 +394,28 @@ export class QuestionnaireDialog {
         !this.state.customTexts.has(ni) &&
         !this.state.chatAbandoned.has(ni)
       ) {
-        this.state.tabIndex = ni;
-        this.state.optionIndex = 0;
-        this.state.chatFocused = false;
+        this.switchTab(ni);
         return;
       }
     }
-    this.done({ answers: this.collectAnswers(), cancelled: false });
+    if (this.state.showSubmit) this.switchTab(this.questions.length);
+    else this.done({ answers: this.collectAnswers(), cancelled: false });
+  }
+
+  private tabLabels(th: Theme): string[] {
+    const tabs = this.questions.map((tq, i) => {
+      const answered =
+        this.state.selections.has(i) ||
+        this.state.customTexts.has(i) ||
+        this.state.chatAbandoned.has(i);
+      const marker = answered ? "✓" : i === this.state.tabIndex ? "●" : "○";
+      return i === this.state.tabIndex
+        ? th.fg("accent", `${marker} ${tq.header}`)
+        : th.fg("dim", `${marker} ${tq.header}`);
+    });
+    const submitAnswered = this.state.tabIndex === this.questions.length;
+    tabs.push(submitAnswered ? th.fg("accent", "● Submit") : th.fg("dim", "○ Submit"));
+    return tabs;
   }
 
   private collectAnswers(): QuestionAnswer[] {
@@ -463,6 +510,53 @@ export class QuestionnaireDialog {
       ? th.fg("accent", th.bold(SENTINEL_CHAT))
       : th.fg("dim", SENTINEL_CHAT);
     return [truncateToWidth(`${pad}${prefix}${label}`, width)];
+  }
+
+  private renderSubmit(width: number, th: Theme): string[] {
+    const pad = "  ";
+    const answers = this.collectAnswers();
+    const lines: string[] = [];
+    lines.push("");
+    lines.push(
+      truncateToWidth(`${pad}${th.fg("accent", th.bold("[Submit]"))} Review answers`, width),
+    );
+    lines.push(
+      truncateToWidth(`${pad}${th.fg("borderMuted", "─".repeat(Math.max(0, width - 4)))}`, width),
+    );
+    lines.push("");
+    if (this.questions.length > 1) {
+      lines.push(truncateToWidth(`${pad}${this.tabLabels(th).join(" │ ")}`, width));
+      lines.push("");
+    }
+    if (answers.length === 0) {
+      lines.push(truncateToWidth(`    ${th.fg("warning", "No answers yet.")}`, width));
+    } else {
+      for (const answer of answers) {
+        const value = answer.kind === "multi" ? answer.selected?.join(", ") : answer.answer;
+        lines.push(
+          truncateToWidth(
+            `    ${th.fg("success", "✓")} ${answer.question} ${th.fg("dim", "=")} ${value ?? ""}`,
+            width,
+          ),
+        );
+      }
+    }
+    lines.push("");
+    const choices = ["Submit answers", "Cancel"];
+    for (let i = 0; i < choices.length; i++) {
+      const focused = i === this.state.submitChoiceIndex;
+      const prefix = focused ? th.fg("accent", "▶ ") : "  ";
+      const label = focused ? th.fg("accent", th.bold(choices[i])) : th.fg("dim", choices[i]);
+      lines.push(truncateToWidth(`    ${prefix}${label}`, width));
+    }
+    lines.push("");
+    lines.push(
+      truncateToWidth(
+        `${pad}${th.fg("dim", "↑↓ choose   Enter confirm   Tab questions   Esc cancel")}`,
+        width,
+      ),
+    );
+    return lines;
   }
 
   private renderSideBySide(
