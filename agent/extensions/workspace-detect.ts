@@ -3,7 +3,7 @@
  */
 
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { detectAll, formatContext, type ProjectInfo } from "./lib/project-detect";
+import { detectAll, formatContext } from "./lib/project-detect";
 
 let workspaceContext = "";
 
