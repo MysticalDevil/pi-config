@@ -95,7 +95,10 @@ export class QuestionnaireDialog {
     const tabs = this.questions.map((q) => {
       const labels = q.options.map((o) => o.label);
       labels.push(SENTINEL_CHAT);
-      if (!q.multiSelect) labels.push(SENTINEL_OTHER);
+      const hasPreview = q.options.some(
+        (o) => typeof o.preview === "string" && o.preview.length > 0,
+      );
+      if (!q.multiSelect && !hasPreview) labels.push(SENTINEL_OTHER);
       if (q.multiSelect) labels.push(SENTINEL_NEXT);
       return { multiSelect: q.multiSelect, labels };
     });
@@ -273,7 +276,8 @@ export class QuestionnaireDialog {
 
   private buildOptionList(q: QuestionData): string[] {
     const labels = q.options.map((o) => o.label);
-    if (!q.multiSelect) labels.push(SENTINEL_OTHER);
+    const hasPreview = q.options.some((o) => typeof o.preview === "string" && o.preview.length > 0);
+    if (!q.multiSelect && !hasPreview) labels.push(SENTINEL_OTHER);
     labels.push(SENTINEL_CHAT);
     if (q.multiSelect) labels.push(SENTINEL_NEXT);
     return labels;

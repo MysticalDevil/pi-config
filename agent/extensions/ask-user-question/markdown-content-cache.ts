@@ -17,8 +17,6 @@ export const MAX_PREVIEW_HEIGHT_SIDE_BY_SIDE = 20;
 /** Height cap in stacked (narrow) layout. */
 export const MAX_PREVIEW_HEIGHT_STACKED = 15;
 export const NO_PREVIEW_TEXT = "No preview available";
-/** 1 blank separator + 1 affordance text row reserved when hasAnyPreview. */
-export const NOTES_AFFORDANCE_OVERHEAD = 2;
 
 /**
  * Per-question cache for rendered markdown previews. One Markdown per option,

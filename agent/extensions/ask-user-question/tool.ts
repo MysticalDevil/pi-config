@@ -10,6 +10,7 @@ import { QuestionnaireDialog } from "./dialog";
 import { buildErrorResult, buildResponse } from "./response";
 import {
   type QuestionParams,
+  type QuestionnaireResult,
   QuestionParamsSchema,
   MAX_OPTIONS,
   MIN_OPTIONS,
@@ -68,7 +69,7 @@ Preview content is rendered as markdown in a monospace box. Multi-line text with
         });
       }
 
-      const result = await ctx.ui.custom<{ answers: unknown[]; cancelled: boolean }>(
+      const result = await ctx.ui.custom<QuestionnaireResult>(
         (tui, theme, _kb, done) => {
           const dialog = new QuestionnaireDialog({
             questions: typed.questions,
@@ -78,9 +79,18 @@ Preview content is rendered as markdown in a monospace box. Multi-line text with
           });
           return dialog;
         },
+        {
+          overlay: true,
+          overlayOptions: {
+            anchor: "bottom-center",
+            width: "100%",
+            maxHeight: "100%",
+            margin: { left: 0, right: 0, bottom: 0 },
+          },
+        },
       );
 
-      return buildResponse(result as { answers: never; cancelled: boolean });
+      return buildResponse(result);
     },
 
     renderCall(args, theme, _context) {

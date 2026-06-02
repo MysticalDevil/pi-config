@@ -20,10 +20,17 @@ export function formatAnswer(answer: QuestionAnswer): string {
   }
 }
 
-export function buildResponse(result: QuestionnaireResult): {
+export function buildResponse(result: QuestionnaireResult | null | undefined): {
   content: Array<{ type: "text"; text: string }>;
   details: Record<string, unknown>;
 } {
+  if (!result) {
+    return {
+      content: [{ type: "text", text: "User declined to answer questions." }],
+      details: { answers: [], cancelled: true },
+    };
+  }
+
   if (result.cancelled) {
     if (result.error) {
       return {
