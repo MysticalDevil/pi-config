@@ -15,6 +15,12 @@ import { spawnSync } from "node:child_process";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Text } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
+import {
+  buildFindFdArgs,
+  buildFindSystemArgs,
+  buildGrepRgArgs,
+  buildGrepSystemArgs,
+} from "./lib/rg-fd-override-helpers.ts";
 
 // ── Parameter schemas (match built-in tool signatures) ────────────────
 
@@ -79,60 +85,6 @@ async function runTool(
     stderr: result.stderr ?? "",
     code: result.code ?? 1,
   };
-}
-
-function buildGrepRgArgs(params: Record<string, unknown>): { command: string; args: string[] } {
-  const pattern = (params.pattern as string) ?? "";
-  const searchPath = (params.path as string) ?? ".";
-  const ignoreCase = params.ignoreCase === true;
-  const literal = params.literal === true;
-  const glob = typeof params.glob === "string" ? params.glob : undefined;
-
-  const args: string[] = ["--no-heading", "--with-filename", "--line-number", "--color=never"];
-
-  if (ignoreCase) args.push("--ignore-case");
-  if (literal) args.push("--fixed-strings");
-  if (glob) args.push("--glob", glob);
-
-  args.push("--", pattern, searchPath);
-  return { command: "rg", args };
-}
-
-function buildGrepSystemArgs(params: Record<string, unknown>): { command: string; args: string[] } {
-  const pattern = (params.pattern as string) ?? "";
-  const searchPath = (params.path as string) ?? ".";
-  const ignoreCase = params.ignoreCase === true;
-  const literal = params.literal === true;
-  const glob = typeof params.glob === "string" ? params.glob : undefined;
-
-  const args: string[] = ["-rnH", "--color=never"];
-
-  if (ignoreCase) args.push("-i");
-  if (literal) args.push("-F");
-  if (glob) args.push(`--include=${glob}`);
-
-  args.push("--", pattern, searchPath);
-  return { command: "grep", args };
-}
-
-function buildFindFdArgs(params: Record<string, unknown>): { command: string; args: string[] } {
-  const pattern = (params.pattern as string) ?? "*";
-  const searchPath = (params.path as string) ?? ".";
-
-  // fd respects .gitignore by default; matches built-in find behavior.
-  const args: string[] = ["--type", "f", "--glob", pattern, searchPath];
-
-  return { command: "fd", args };
-}
-
-function buildFindSystemArgs(params: Record<string, unknown>): { command: string; args: string[] } {
-  const pattern = (params.pattern as string) ?? "*";
-  const searchPath = (params.path as string) ?? ".";
-
-  const globPattern = `*/${pattern}`;
-  const args: string[] = [searchPath, "-type", "f", "-path", globPattern];
-
-  return { command: "find", args };
 }
 
 // ── Extension ─────────────────────────────────────────────────────────

@@ -20,7 +20,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 
-interface ContextEntry {
+export interface ContextEntry {
   path: string;
   type: "file" | "directory";
   addedAt: number;
@@ -72,7 +72,51 @@ function shouldIgnore(filePath: string): boolean {
 }
 
 function splitArgs(args: string): string[] {
-  return (args || "").trim().split(/\s+/).filter(Boolean);
+  const tokens: string[] = [];
+  let current = "";
+  let quote: "'" | '"' | undefined;
+  let escaping = false;
+
+  for (const ch of args || "") {
+    if (escaping) {
+      current += ch;
+      escaping = false;
+      continue;
+    }
+
+    if (ch === "\\") {
+      escaping = true;
+      continue;
+    }
+
+    if (quote) {
+      if (ch === quote) {
+        quote = undefined;
+      } else {
+        current += ch;
+      }
+      continue;
+    }
+
+    if (ch === "'" || ch === '"') {
+      quote = ch;
+      continue;
+    }
+
+    if (/\s/.test(ch)) {
+      if (current) {
+        tokens.push(current);
+        current = "";
+      }
+      continue;
+    }
+
+    current += ch;
+  }
+
+  if (escaping) current += "\\";
+  if (current) tokens.push(current);
+  return tokens;
 }
 
 function toRelativePath(cwd: string, filePath: string): string {
@@ -81,6 +125,28 @@ function toRelativePath(cwd: string, filePath: string): string {
 
 function hasGlobChars(targetPath: string): boolean {
   return /[*?[{}()]/.test(targetPath);
+}
+
+export function isPathWithin(filePath: string, basePath: string): boolean {
+  const relative = path.relative(basePath, filePath);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
+}
+
+export function resolveWorkspacePath(cwd: string, targetPath: string): string | undefined {
+  const resolvedCwd = path.resolve(cwd);
+  const resolvedPath = path.resolve(resolvedCwd, targetPath);
+  return isPathWithin(resolvedPath, resolvedCwd) ? resolvedPath : undefined;
+}
+
+function realPathWithin(cwd: string, filePath: string): boolean {
+  const realCwd = fs.realpathSync(cwd);
+  const realPath = fs.realpathSync(filePath);
+  return isPathWithin(realPath, realCwd);
+}
+
+function isWorkspaceGlob(pattern: string): boolean {
+  if (path.isAbsolute(pattern)) return false;
+  return !pattern.replace(/\\/g, "/").split("/").includes("..");
 }
 
 function globToRegExp(pattern: string): RegExp {
@@ -147,7 +213,7 @@ function collectGlobFiles(
 
     let stat: fs.Stats;
     try {
-      stat = fs.statSync(fullPath);
+      stat = fs.lstatSync(fullPath);
     } catch (e) {
       if (
         (e as NodeJS.ErrnoException).code === "ENOENT" ||
@@ -156,6 +222,10 @@ function collectGlobFiles(
         continue;
       }
       throw e;
+    }
+
+    if (stat.isSymbolicLink()) {
+      continue;
     }
 
     if (stat.isFile()) {
@@ -179,16 +249,18 @@ function collectFiles(
   files: Map<string, true>,
 ): void {
   if (hasGlobChars(targetPath)) {
+    if (!isWorkspaceGlob(targetPath)) return;
     const matcher = globToRegExp(targetPath);
     collectGlobFiles(cwd, cwd, matcher, files);
     return;
   }
 
-  const fullPath = path.resolve(cwd, targetPath);
+  const fullPath = resolveWorkspacePath(cwd, targetPath);
 
-  if (!fs.existsSync(fullPath)) return;
+  if (!fullPath || !fs.existsSync(fullPath) || !realPathWithin(cwd, fullPath)) return;
 
-  const stat = fs.statSync(fullPath);
+  const stat = fs.lstatSync(fullPath);
+  if (stat.isSymbolicLink()) return;
 
   if (stat.isFile()) {
     if (!shouldIgnore(fullPath)) {
@@ -227,7 +299,8 @@ function walkDir(
     if (shouldIgnore(fullPath)) continue;
 
     try {
-      const stat = fs.statSync(fullPath);
+      const stat = fs.lstatSync(fullPath);
+      if (stat.isSymbolicLink()) continue;
       if (stat.isFile()) {
         files.set(fullPath, true);
       } else if (stat.isDirectory()) {
@@ -306,6 +379,28 @@ function buildContextBlock(entries: ContextEntry[], cwd: string): string {
   return lines.join("\n");
 }
 
+export function removeContextEntries(
+  entries: ContextEntry[],
+  cwd: string,
+  targetPath: string,
+): { remaining: ContextEntry[]; removed: ContextEntry[] } | undefined {
+  const target = resolveWorkspacePath(cwd, targetPath);
+  if (!target) return undefined;
+
+  const remaining: ContextEntry[] = [];
+  const removed: ContextEntry[] = [];
+
+  for (const entry of entries) {
+    if (isPathWithin(entry.path, target)) {
+      removed.push(entry);
+    } else {
+      remaining.push(entry);
+    }
+  }
+
+  return { remaining, removed };
+}
+
 export default function (pi: ExtensionAPI) {
   let contextEntries: ContextEntry[] = [];
   let currentContextText: string = "";
@@ -340,19 +435,21 @@ export default function (pi: ExtensionAPI) {
 
   // Restore state on session start
   pi.on("session_start", async (_event, ctx) => {
-    const entries = ctx.sessionManager.getEntries();
+    const entries = ctx.sessionManager.getBranch();
     for (const entry of entries) {
       if (entry.type === "custom" && entry.customType === "dynamic-context") {
         const data = entry.data as
           | { entries: Array<{ path: string; type: "file" | "directory"; addedAt: number }> }
           | undefined;
         if (data?.entries) {
-          contextEntries = data.entries.map((e) => ({
-            path: e.path,
-            type: e.type,
-            addedAt: e.addedAt,
-            content: undefined,
-          }));
+          contextEntries = data.entries
+            .map((e) => ({
+              path: e.path,
+              type: e.type,
+              addedAt: e.addedAt,
+              content: undefined,
+            }))
+            .filter((e) => resolveWorkspacePath(ctx.cwd, path.relative(ctx.cwd, e.path)));
           rebuildContext(ctx.cwd);
         }
       }
@@ -423,8 +520,14 @@ export default function (pi: ExtensionAPI) {
       const notFound: string[] = [];
 
       for (const p of paths) {
-        const fullPath = path.resolve(ctx.cwd, p);
-        if (!fs.existsSync(fullPath) || !fs.statSync(fullPath).isFile()) {
+        const fullPath = resolveWorkspacePath(ctx.cwd, p);
+        if (!fullPath || !fs.existsSync(fullPath) || !realPathWithin(ctx.cwd, fullPath)) {
+          notFound.push(p);
+          continue;
+        }
+
+        const stat = fs.lstatSync(fullPath);
+        if (stat.isSymbolicLink() || !stat.isFile()) {
           notFound.push(p);
           continue;
         }
@@ -476,16 +579,15 @@ export default function (pi: ExtensionAPI) {
       }
 
       if (tokens[0] === "--remove" && tokens[1]) {
-        const target = path.resolve(ctx.cwd, tokens[1]);
-        const idx = contextEntries.findIndex((e) => e.path === target || e.path.startsWith(target));
-        if (idx === -1) {
+        const result = removeContextEntries(contextEntries, ctx.cwd, tokens[1]);
+        if (!result || result.removed.length === 0) {
           ctx.ui.notify(`No context entry matching: ${tokens[1]}`, "warning");
           return;
         }
-        const removed = contextEntries.splice(idx, 1)[0];
+        contextEntries = result.remaining;
         rebuildContext(ctx.cwd);
         persistState();
-        ctx.ui.notify(`Removed: ${path.relative(ctx.cwd, removed.path)}`, "info");
+        ctx.ui.notify(`Removed ${result.removed.length} context entrie(s)`, "info");
         return;
       }
 

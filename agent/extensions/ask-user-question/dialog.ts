@@ -28,6 +28,7 @@ import {
 interface DialogState {
   tabIndex: number;
   optionIndex: number;
+  chatFocused: boolean;
   // Per-question answers
   selections: Map<number, string[]>;
   customTexts: Map<number, string>;
@@ -64,6 +65,7 @@ export class QuestionnaireDialog {
     this.state = {
       tabIndex: 0,
       optionIndex: 0,
+      chatFocused: false,
       selections: new Map(),
       customTexts: new Map(),
       chatAbandoned: new Set(),
@@ -94,7 +96,6 @@ export class QuestionnaireDialog {
   private computeAdaptiveLeft(paneWidth: number): number {
     const tabs = this.questions.map((q) => {
       const labels = q.options.map((o) => o.label);
-      labels.push(SENTINEL_CHAT);
       const hasPreview = q.options.some(
         (o) => typeof o.preview === "string" && o.preview.length > 0,
       );
@@ -117,6 +118,25 @@ export class QuestionnaireDialog {
     if (matchesKey(data, "escape")) {
       this.done({ answers: this.collectAnswers(), cancelled: true });
       return;
+    }
+
+    if (this.state.chatFocused) {
+      if (matchesKey(data, "enter")) {
+        this.state.chatAbandoned.add(this.state.tabIndex);
+        this.advanceOrSubmit();
+        return;
+      }
+      if (matchesKey(data, "down")) {
+        this.state.chatFocused = false;
+        this.state.optionIndex = 0;
+        return;
+      }
+      if (matchesKey(data, "up")) {
+        this.state.chatFocused = false;
+        this.state.optionIndex = Math.max(0, items.length - 1);
+        return;
+      }
+      if (data === " ") return;
     }
 
     // Multi-select: Space to toggle
@@ -144,11 +164,6 @@ export class QuestionnaireDialog {
         this.enterCustomMode();
         return;
       }
-      if (this.isOnChatSentinel(items)) {
-        this.state.chatAbandoned.add(this.state.tabIndex);
-        this.advanceOrSubmit();
-        return;
-      }
       // Select option
       const opt = q.options[this.state.optionIndex];
       if (opt) {
@@ -160,10 +175,18 @@ export class QuestionnaireDialog {
 
     // Up/Down navigation
     if (matchesKey(data, "up")) {
+      if (this.state.optionIndex === 0) {
+        this.state.chatFocused = true;
+        return;
+      }
       this.state.optionIndex = Math.max(0, this.state.optionIndex - 1);
       return;
     }
     if (matchesKey(data, "down")) {
+      if (this.state.optionIndex >= items.length - 1) {
+        this.state.chatFocused = true;
+        return;
+      }
       this.state.optionIndex = Math.min(items.length - 1, this.state.optionIndex + 1);
       return;
     }
@@ -172,6 +195,7 @@ export class QuestionnaireDialog {
     if (matchesKey(data, "tab") && this.questions.length > 1) {
       this.state.tabIndex = (this.state.tabIndex + 1) % this.questions.length;
       this.state.optionIndex = 0;
+      this.state.chatFocused = false;
       return;
     }
   }
@@ -255,6 +279,8 @@ export class QuestionnaireDialog {
     } else {
       lines.push(...this.renderSimpleList(items, q, width, th));
     }
+    lines.push("");
+    lines.push(...this.renderChatRow(width, th));
 
     // Footer
     lines.push("");
@@ -278,17 +304,12 @@ export class QuestionnaireDialog {
     const labels = q.options.map((o) => o.label);
     const hasPreview = q.options.some((o) => typeof o.preview === "string" && o.preview.length > 0);
     if (!q.multiSelect && !hasPreview) labels.push(SENTINEL_OTHER);
-    labels.push(SENTINEL_CHAT);
     if (q.multiSelect) labels.push(SENTINEL_NEXT);
     return labels;
   }
 
   private isOnCustomSentinel(items: string[]): boolean {
     return items[this.state.optionIndex] === SENTINEL_OTHER;
-  }
-
-  private isOnChatSentinel(items: string[]): boolean {
-    return items[this.state.optionIndex] === SENTINEL_CHAT;
   }
 
   private isOnNextSentinel(items: string[]): boolean {
@@ -343,6 +364,7 @@ export class QuestionnaireDialog {
       ) {
         this.state.tabIndex = ni;
         this.state.optionIndex = 0;
+        this.state.chatFocused = false;
         return;
       }
     }
@@ -404,7 +426,7 @@ export class QuestionnaireDialog {
     const lines: string[] = [];
     const pad = "    ";
     for (let i = 0; i < items.length; i++) {
-      const isFocused = i === this.state.optionIndex;
+      const isFocused = !this.state.chatFocused && i === this.state.optionIndex;
       const label = items[i];
       const prefix = isFocused ? th.fg("accent", "▶ ") : "  ";
 
@@ -434,6 +456,15 @@ export class QuestionnaireDialog {
     return lines;
   }
 
+  private renderChatRow(width: number, th: Theme): string[] {
+    const pad = "    ";
+    const prefix = this.state.chatFocused ? th.fg("accent", "▶ ") : "  ";
+    const label = this.state.chatFocused
+      ? th.fg("accent", th.bold(SENTINEL_CHAT))
+      : th.fg("dim", SENTINEL_CHAT);
+    return [truncateToWidth(`${pad}${prefix}${label}`, width)];
+  }
+
   private renderSideBySide(
     items: string[],
     q: QuestionData,
@@ -449,7 +480,7 @@ export class QuestionnaireDialog {
     // Left: option list
     const leftLines: string[] = [];
     for (let i = 0; i < items.length; i++) {
-      const isFocused = i === this.state.optionIndex;
+      const isFocused = !this.state.chatFocused && i === this.state.optionIndex;
       const label = items[i];
       const prefix = isFocused ? th.fg("accent", "▶ ") : "  ";
       const sel = this.state.selections.get(this.state.tabIndex);
@@ -457,7 +488,7 @@ export class QuestionnaireDialog {
       const check = q.multiSelect ? (checked ? th.fg("success", "☑ ") : th.fg("dim", "☐ ")) : "";
       let text = isFocused
         ? th.fg("accent", th.bold(label))
-        : label === SENTINEL_CHAT || label === SENTINEL_OTHER
+        : label === SENTINEL_OTHER
           ? th.fg("dim", label)
           : label === SENTINEL_NEXT
             ? th.fg("accent", label)
