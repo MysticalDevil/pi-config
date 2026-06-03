@@ -876,7 +876,7 @@ export default function (pi: ExtensionAPI) {
           reason: `Sandbox: write to protected path "${filepath}" is blocked`,
         };
       }
-      const resolved = resolve(filepath);
+      const resolved = resolve(ctx.cwd, filepath);
       for (const denied of sandboxConfig.deniedPaths) {
         if (resolved.startsWith(`${denied}/`) || resolved === denied) {
           ctx.ui.notify(`🔒 Sandbox: write to denied path blocked: ${filepath}`, "warning");
@@ -890,7 +890,7 @@ export default function (pi: ExtensionAPI) {
 
     if (event.toolName === "read") {
       const filepath = (event.input as { path?: string }).path ?? "";
-      const resolved = resolve(filepath);
+      const resolved = resolve(ctx.cwd, filepath);
       for (const denied of sandboxConfig.deniedPaths) {
         if (resolved.startsWith(`${denied}/`) || resolved === denied) {
           ctx.ui.notify(`🔒 Sandbox: read of denied path blocked: ${filepath}`, "warning");
@@ -912,6 +912,9 @@ export default function (pi: ExtensionAPI) {
 
     // Load config
     sandboxConfig = loadConfig(ctx.cwd);
+    sandboxedBash = createBashTool(localCwd, {
+      operations: createSandboxedBashOps(sandboxConfig),
+    });
 
     // Load execpolicy rules (project-specific)
     currentPolicy = loadPolicy(ctx.cwd);

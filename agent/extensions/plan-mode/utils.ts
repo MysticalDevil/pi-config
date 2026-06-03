@@ -3,6 +3,8 @@
  * Extracted for testability.
  */
 
+export const PLAN_MODE_TOOLS = ["read", "bash", "grep", "find", "ls", "ask_user_question"];
+
 // Destructive commands blocked in plan mode
 const DESTRUCTIVE_PATTERNS = [
   /\brm\b/i,

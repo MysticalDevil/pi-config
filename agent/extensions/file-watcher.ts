@@ -13,7 +13,7 @@ import { existsSync, lstatSync, readFileSync, readdirSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, relative } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { parseStatusLine } from "./lib/shared";
+import { parseStatusLine } from "./lib/shared.ts";
 
 // Override via ~/.pi/agent/settings.json:
 // { "fileWatcher": { "pollIntervalMs": 5000, "maxChanges": 20, "maxScanFiles": 3000 } }
@@ -89,7 +89,7 @@ function gitSnapshot(cwd: string): Snapshot {
       if (!line) continue;
 
       const parsed = parseStatusLine(line);
-      if (!parsed) continue;
+      if (!parsed || shouldIgnoreWatcherPath(parsed.file)) continue;
 
       const isDeleted = parsed.status.includes("D") && !parsed.status.includes("?");
       const fullPath = join(cwd, parsed.file);
@@ -109,17 +109,18 @@ function gitSnapshot(cwd: string): Snapshot {
   };
 }
 
-function shouldIgnore(relativePath: string): boolean {
+export function shouldIgnoreWatcherPath(relativePath: string): boolean {
   if (!relativePath || relativePath === ".") return false;
 
-  const parts = relativePath.split("/");
+  const normalized = relativePath.replaceAll("\\", "/");
+  const parts = normalized.split("/");
   const firstPart = parts[0];
   if (firstPart.startsWith(".") && firstPart !== ".github" && firstPart !== ".gitignore") {
     return true;
   }
 
   for (const ignored of IGNORED_DIRS) {
-    if (relativePath === ignored || relativePath.startsWith(`${ignored}/`)) return true;
+    if (normalized === ignored || normalized.startsWith(`${ignored}/`)) return true;
   }
 
   return parts.some((part) => IGNORED_DIRS.has(part));
@@ -144,7 +145,7 @@ function filesystemSnapshot(cwd: string, settings: WatcherSettings): Snapshot {
       if (truncated) return;
       const fullPath = join(dir, child);
       const relPath = relative(cwd, fullPath).replaceAll("\\", "/");
-      if (shouldIgnore(relPath)) continue;
+      if (shouldIgnoreWatcherPath(relPath)) continue;
 
       let stat;
       try {
@@ -280,7 +281,7 @@ export default function (pi: ExtensionAPI) {
         content: formatChanges(changes, settings.maxChanges),
         display: false,
       },
-      { triggerTurn: false },
+      { deliverAs: "nextTurn", triggerTurn: false },
     );
   }
 

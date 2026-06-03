@@ -23,6 +23,27 @@ interface TurnStats {
   cost: number;
 }
 
+export interface AssistantUsageStats {
+  model?: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  cost: number;
+}
+
+export function getAssistantUsageStats(msg: AssistantMessage): AssistantUsageStats {
+  const usage = msg.usage;
+  return {
+    model: msg.responseModel ?? msg.model,
+    inputTokens: usage.input ?? 0,
+    outputTokens: usage.output ?? 0,
+    cacheReadTokens: usage.cacheRead ?? 0,
+    cacheWriteTokens: usage.cacheWrite ?? 0,
+    cost: usage.cost?.total ?? 0,
+  };
+}
+
 interface SessionCostData {
   turns: TurnStats[];
   totalInput: number;
@@ -103,29 +124,25 @@ export default function (pi: ExtensionAPI) {
     const usage = msg.usage;
     if (!usage) return;
 
-    const inputTokens = usage.inputTokens ?? 0;
-    const outputTokens = usage.outputTokens ?? 0;
-    const cacheRead = usage.cacheReadInputTokens ?? 0;
-    const cacheWrite = usage.cacheCreationInputTokens ?? 0;
-    const cost = usage.cost?.total ?? 0;
+    const usageStats = getAssistantUsageStats(msg);
 
     // Update current turn
     const currentTurn = stats.turns[stats.turns.length - 1];
     if (currentTurn) {
-      currentTurn.inputTokens += inputTokens;
-      currentTurn.outputTokens += outputTokens;
-      currentTurn.cacheReadTokens += cacheRead;
-      currentTurn.cacheWriteTokens += cacheWrite;
-      currentTurn.cost += cost;
-      currentTurn.model = msg.model?.id;
+      currentTurn.inputTokens += usageStats.inputTokens;
+      currentTurn.outputTokens += usageStats.outputTokens;
+      currentTurn.cacheReadTokens += usageStats.cacheReadTokens;
+      currentTurn.cacheWriteTokens += usageStats.cacheWriteTokens;
+      currentTurn.cost += usageStats.cost;
+      currentTurn.model = usageStats.model;
     }
 
     // Update totals
-    stats.totalInput += inputTokens;
-    stats.totalOutput += outputTokens;
-    stats.totalCacheRead += cacheRead;
-    stats.totalCacheWrite += cacheWrite;
-    stats.totalCost += cost;
+    stats.totalInput += usageStats.inputTokens;
+    stats.totalOutput += usageStats.outputTokens;
+    stats.totalCacheRead += usageStats.cacheReadTokens;
+    stats.totalCacheWrite += usageStats.cacheWriteTokens;
+    stats.totalCost += usageStats.cost;
 
     persistState();
     updateWidget(ctx);
@@ -133,7 +150,8 @@ export default function (pi: ExtensionAPI) {
 
   // Restore state on session start
   function restoreCostData(entries: Array<{ type: string; customType?: string; data?: unknown }>) {
-    for (const entry of entries) {
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const entry = entries[i];
       if (entry.type === "custom" && entry.customType === "cost-data") {
         const data = entry.data as SessionCostData | undefined;
         if (data) {
