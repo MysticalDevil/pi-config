@@ -12,7 +12,9 @@
  *   delete  — tombstone a task (keeps historic blockedBy references)
  *   clear   — remove all tasks
  *
- * Command: /todos — show interactive task list grouped by status
+ * Commands:
+ *   /todo  — manage tasks from the slash command line
+ *   /todos — show interactive task list grouped by status
  *
  * Widget: overlay above editor showing pending/in_progress tasks
  */
@@ -21,6 +23,7 @@ import { StringEnum } from "@earendil-works/pi-ai";
 import type { ExtensionAPI, ExtensionContext, Theme } from "@earendil-works/pi-coding-agent";
 import { matchesKey, Text, truncateToWidth } from "@earendil-works/pi-tui";
 import { Type } from "typebox";
+import { parseTodoCommandArgs, todoCommandHelp } from "./lib/todo-command-helpers";
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -512,10 +515,15 @@ export default function (pi: ExtensionAPI) {
     const branch = ctx.sessionManager.getBranch();
     for (let i = branch.length - 1; i >= 0; i--) {
       const entry = branch[i];
-      if (entry.type !== "message") continue;
-      const msg = entry.message;
-      if (msg.role !== "toolResult" || msg.toolName !== "todo") continue;
-      const details = msg.details as TaskDetails | undefined;
+      let details: TaskDetails | undefined;
+      if (entry.type === "message") {
+        const msg = entry.message;
+        if (msg.role === "toolResult" && msg.toolName === "todo") {
+          details = msg.details as TaskDetails | undefined;
+        }
+      } else if (entry.type === "custom" && entry.customType === "todo-state") {
+        details = entry.data as TaskDetails | undefined;
+      }
       if (details?.tasks) {
         state = { tasks: details.tasks.map((t) => ({ ...t })), nextId: details.nextId };
         break;
@@ -643,10 +651,81 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
+  // ── /todo command ─────────────────────────────────────────────────────
+
+  pi.registerCommand("todo", {
+    description: "Manage todos (usage: /todo [list|add|start|done|reopen|delete|clear|help])",
+    handler: async (args, ctx) => {
+      reconstruct(ctx);
+
+      const parsed = parseTodoCommandArgs(args);
+      if (parsed.action === "help") {
+        const text = [parsed.errors.join("\n"), todoCommandHelp()].filter(Boolean).join("\n\n");
+        ctx.ui.notify(text, parsed.errors.length ? "error" : "info");
+        return;
+      }
+
+      if (parsed.errors.length > 0) {
+        ctx.ui.notify(`${parsed.errors.join("\n")}\n\n${todoCommandHelp()}`, "error");
+        return;
+      }
+
+      const action = parsed.action as TaskAction;
+      if (action === "clear" && state.tasks.length > 0 && !parsed.confirm) {
+        if (!ctx.hasUI) {
+          ctx.ui.notify("/todo clear requires --yes outside interactive mode", "error");
+          return;
+        }
+        const confirmed = await ctx.ui.confirm(
+          "Clear todos?",
+          `This will remove ${state.tasks.length} task${state.tasks.length === 1 ? "" : "s"}. Continue?`,
+        );
+        if (!confirmed) return;
+      }
+
+      const result = applyMutation(state, action, parsed.params);
+      if (result.error) {
+        ctx.ui.notify(`Error: ${result.error}`, "error");
+        return;
+      }
+
+      state = result.state;
+      const mutating =
+        action === "create" || action === "update" || action === "delete" || action === "clear";
+      if (mutating) {
+        pi.appendEntry("todo-state", persistDetails(action, parsed.params));
+      }
+      refreshOverlay(ctx);
+
+      let text: string;
+      switch (action) {
+        case "create":
+          text = formatCreateResult(result.op!);
+          break;
+        case "update":
+          text = formatUpdateResult(result.op!);
+          break;
+        case "list":
+          text = formatListResult(state, parsed.params);
+          break;
+        case "get":
+          text = formatGetResult((result.op! as { task: Task }).task);
+          break;
+        case "delete":
+          text = formatDeleteResult(result.op!);
+          break;
+        case "clear":
+          text = formatClearResult((result.op! as { count: number }).count);
+          break;
+      }
+      ctx.ui.notify(text, "info");
+    },
+  });
+
   // ── /todos command ────────────────────────────────────────────────────
 
   pi.registerCommand("todos", {
-    description: "Show all todos grouped by status",
+    description: "Show all todos grouped by status (alias: /todo list)",
     handler: async (_args, ctx) => {
       if (!ctx.hasUI) {
         ctx.ui.notify("/todos requires interactive mode", "error");

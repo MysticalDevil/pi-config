@@ -3,10 +3,13 @@ import test from "node:test";
 import path from "node:path";
 
 const addContext = await import("./add-context.ts");
+const cost = await import("./cost.ts");
 const init = await import("./init.ts");
+const planMode = await import("./plan-mode/utils.ts");
 const extensionsCmd = await import("./lib/extensions-cmd-helpers.ts");
-const rgFdOverride = await import("./lib/rg-fd-override-helpers.ts");
+const fileWatcher = await import("./file-watcher.ts");
 const reviewMode = await import("./lib/review-mode-helpers.ts");
+const todoCommand = await import("./lib/todo-command-helpers.ts");
 const askDialogHelpers = await import("./ask-user-question/dialog-helpers.ts");
 const askResponse = await import("./ask-user-question/response.ts");
 
@@ -55,42 +58,78 @@ test("removeContextEntries removes every entry under a directory", () => {
   );
 });
 
-test("fd find args split path-qualified globs into search path and basename pattern", () => {
-  assert.deepEqual(rgFdOverride.buildFindFdArgs({ pattern: "agent/extensions/*.ts" }), {
-    command: "fd",
-    args: ["--type", "f", "--glob", "*.ts", "agent/extensions"],
-  });
-});
-
-test("fd find args keep leading globstar patterns rooted at the requested path", () => {
-  assert.deepEqual(rgFdOverride.buildFindFdArgs({ pattern: "**/*.json" }), {
-    command: "fd",
-    args: ["--type", "f", "--glob", "**/*.json", "."],
-  });
-});
-
-test("system find fallback excludes common ignored directories", () => {
-  const built = rgFdOverride.buildFindSystemArgs({ pattern: "*.ts", path: "." });
-
-  assert.equal(built.command, "find");
-  assert.ok(built.args.includes("node_modules"));
-  assert.ok(built.args.includes("-prune"));
-  assert.ok(built.args.includes("-name"));
-  assert.ok(built.args.includes("*.ts"));
-});
-
-test("system find fallback uses path matching for slash-containing globs", () => {
-  const built = rgFdOverride.buildFindSystemArgs({ pattern: "**/*.json", path: "." });
-
-  assert.ok(built.args.includes("-path"));
-  assert.ok(built.args.includes("*/**/*.json"));
-});
-
 test("extension names reject path traversal and separators", () => {
   assert.equal(extensionsCmd.isSafeExtensionName("dirty-repo-guard"), true);
   assert.equal(extensionsCmd.isSafeExtensionName("../dirty-repo-guard"), false);
   assert.equal(extensionsCmd.isSafeExtensionName("dir/plugin"), false);
   assert.equal(extensionsCmd.isSafeExtensionName(".hidden"), false);
+});
+
+test("plan mode enables the installed ask_user_question tool", () => {
+  assert.equal(planMode.PLAN_MODE_TOOLS.includes("ask_user_question"), true);
+  assert.equal(planMode.PLAN_MODE_TOOLS.includes("questionnaire"), false);
+});
+
+test("file watcher ignores pi session state paths", () => {
+  assert.equal(fileWatcher.shouldIgnoreWatcherPath("agent/sessions/abc.jsonl"), true);
+  assert.equal(fileWatcher.shouldIgnoreWatcherPath("agent/sessions/nested/abc.jsonl"), true);
+  assert.equal(fileWatcher.shouldIgnoreWatcherPath("agent/extensions/file-watcher.ts"), false);
+});
+
+test("cost extension reads official pi usage fields", () => {
+  const stats = cost.getAssistantUsageStats({
+    role: "assistant",
+    provider: "openai-codex",
+    model: "gpt-5.5",
+    responseModel: "gpt-5.5-2026-06-01",
+    usage: {
+      input: 10,
+      output: 20,
+      cacheRead: 30,
+      cacheWrite: 40,
+      totalTokens: 100,
+      cost: { input: 0.1, output: 0.2, cacheRead: 0.03, cacheWrite: 0.04, total: 0.37 },
+    },
+  });
+
+  assert.deepEqual(stats, {
+    model: "gpt-5.5-2026-06-01",
+    inputTokens: 10,
+    outputTokens: 20,
+    cacheReadTokens: 30,
+    cacheWriteTokens: 40,
+    cost: 0.37,
+  });
+});
+
+test("todo command parses create and clear confirmation", () => {
+  assert.deepEqual(todoCommand.parseTodoCommandArgs("add ship feature"), {
+    action: "create",
+    params: { subject: "ship feature" },
+    confirm: false,
+    errors: [],
+  });
+  assert.deepEqual(todoCommand.parseTodoCommandArgs("clear --yes"), {
+    action: "clear",
+    params: {},
+    confirm: true,
+    errors: [],
+  });
+});
+
+test("todo command parses status aliases", () => {
+  assert.deepEqual(todoCommand.parseTodoCommandArgs("start #3"), {
+    action: "update",
+    params: { id: 3, status: "in_progress" },
+    confirm: false,
+    errors: [],
+  });
+  assert.deepEqual(todoCommand.parseTodoCommandArgs("done 3"), {
+    action: "update",
+    params: { id: 3, status: "completed" },
+    confirm: false,
+    errors: [],
+  });
 });
 
 test("review revert paths stay inside repository", () => {
