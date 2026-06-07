@@ -32,6 +32,7 @@ import { homedir } from "node:os";
 import { join, resolve } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { type BashOperations, createBashTool, getAgentDir } from "@earendil-works/pi-coding-agent";
+import { deepMerge, mergeProjectSandboxConfig, type SandboxConfig } from "./config-helpers.ts";
 import { evaluateCommand, type LoadedPolicy, loadPolicy } from "./execpolicy";
 import { guardianReview, lightweightModel } from "./guardian";
 import { auditLogHook, configProtectionHook, hooks, networkSafetyHook, setupHooks } from "./hooks";
@@ -53,20 +54,6 @@ const MODE_COLOR: Record<PermissionMode, string> = {
   "auto-review": "warning",
   "full-access": "error",
 };
-
-interface SandboxConfig {
-  enabled: boolean;
-  /** Paths to make writable (in addition to cwd and /tmp) */
-  writablePaths: string[];
-  /** Paths to hide entirely (deny read + write) */
-  deniedPaths: string[];
-  /** Paths (globs) inside writable areas that should stay read-only */
-  writeProtected: string[];
-  /** Network restriction — if false, use --share-net */
-  restrictNetwork: boolean;
-  /** Extra bwrap arguments appended to every invocation */
-  extraBwrapArgs: string[];
-}
 
 // ── Default Config (development-friendly, less conservative) ───────────────
 
@@ -106,6 +93,14 @@ function expandTilde(p: string): string {
   return p;
 }
 
+function expandConfigPaths(config: Partial<SandboxConfig>): Partial<SandboxConfig> {
+  return {
+    ...config,
+    writablePaths: config.writablePaths?.map(expandTilde),
+    deniedPaths: config.deniedPaths?.map(expandTilde),
+  };
+}
+
 function loadConfig(cwd: string): SandboxConfig {
   const globalConfigPath = join(getAgentDir(), "extensions", "sandbox", "config.json");
   const projectConfigPath = join(cwd, ".pi", "sandbox.json");
@@ -128,37 +123,14 @@ function loadConfig(cwd: string): SandboxConfig {
     }
   }
 
-  const merged = deepMerge(DEFAULT_CONFIG, deepMerge(global, project));
+  const globalMerged = deepMerge(DEFAULT_CONFIG, expandConfigPaths(global));
+  const merged = mergeProjectSandboxConfig(globalMerged, expandConfigPaths(project));
 
   // Expand tildes in all path arrays
   merged.writablePaths = merged.writablePaths.map(expandTilde);
   merged.deniedPaths = merged.deniedPaths.map(expandTilde);
 
   return merged;
-}
-
-function deepMerge<T extends Record<string, unknown>>(base: T, overrides: Partial<T>): T {
-  // IMPORTANT: Arrays are replaced (not concatenated). For example, project-level
-  // writablePaths *replaces* the global default writablePaths entirely.
-  // To extend a default list, copy it into your project config first.
-  // Nested objects are recursively merged.
-  const result: Record<string, unknown> = { ...base };
-  for (const key of Object.keys(overrides)) {
-    const ov = (overrides as Record<string, unknown>)[key];
-    if (ov !== undefined) {
-      if (Array.isArray(ov)) {
-        (result as Record<string, unknown>)[key] = ov;
-      } else if (typeof ov === "object" && ov !== null && !Array.isArray(ov)) {
-        (result as Record<string, unknown>)[key] = deepMerge(
-          ((base as Record<string, unknown>)[key] as Record<string, unknown>) ?? {},
-          ov as Record<string, unknown>,
-        );
-      } else {
-        (result as Record<string, unknown>)[key] = ov;
-      }
-    }
-  }
-  return result as T;
 }
 
 // ── bwrap detection ─────────────────────────────────────────────────────────

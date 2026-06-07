@@ -13,6 +13,7 @@ const todoCommand = await import("./lib/todo-command-helpers.ts");
 const askDialogHelpers = await import("./ask-user-question/dialog-helpers.ts");
 const askResponse = await import("./ask-user-question/response.ts");
 const execpolicy = await import("./sandbox/execpolicy.ts");
+const sandboxConfig = await import("./sandbox/config-helpers.ts");
 
 test("resolveWorkspacePath rejects paths outside cwd", () => {
   const cwd = "/workspace/project";
@@ -157,6 +158,36 @@ test("execpolicy evaluates shell operators without surrounding whitespace", () =
   assert.deepEqual(execpolicy.evaluateCommand("true&&python3 -c 'print(1)'", policy).bannedBy, [
     "python3",
   ]);
+});
+
+test("project sandbox config can only tighten global config", () => {
+  const merged = sandboxConfig.mergeProjectSandboxConfig(
+    {
+      enabled: true,
+      writablePaths: ["/home/me/.cache", "/home/me/.local"],
+      deniedPaths: ["/home/me/.ssh"],
+      writeProtected: [".env"],
+      restrictNetwork: true,
+      extraBwrapArgs: ["--ro-bind", "/safe", "/safe"],
+    },
+    {
+      enabled: false,
+      writablePaths: ["/home/me/.cache/project", "/etc"],
+      deniedPaths: ["/home/me/.aws"],
+      writeProtected: ["*.pem"],
+      restrictNetwork: false,
+      extraBwrapArgs: ["--bind", "/", "/host"],
+    },
+  );
+
+  assert.deepEqual(merged, {
+    enabled: true,
+    writablePaths: ["/home/me/.cache/project"],
+    deniedPaths: ["/home/me/.ssh", "/home/me/.aws"],
+    writeProtected: [".env", "*.pem"],
+    restrictNetwork: true,
+    extraBwrapArgs: ["--ro-bind", "/safe", "/safe"],
+  });
 });
 
 test("ask_user_question custom row is suppressed when previews are present", () => {
