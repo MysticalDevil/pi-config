@@ -27,7 +27,7 @@ import * as path from "node:path";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
 import { Key } from "@earendil-works/pi-tui";
 
-import { resolveRepoFilePath } from "./lib/review-mode-helpers.ts";
+import { buildGitAddArgs, resolveRepoFilePath } from "./lib/review-mode-helpers.ts";
 import { parseStatusLine } from "./lib/shared";
 
 function isGitRepo(cwd: string): boolean {
@@ -303,8 +303,14 @@ export default function (pi: ExtensionAPI) {
           return;
         }
 
-        const files = Array.from(state.acceptedFiles);
-        await pi.exec("git", ["add", ...files], { cwd: ctx.cwd });
+        const currentFiles = new Set((await getChanges(ctx.cwd)).map((change) => change.file));
+        const files = Array.from(state.acceptedFiles).filter((file) => currentFiles.has(file));
+        if (files.length === 0) {
+          ctx.ui.notify("No accepted changes still exist to commit.", "warning");
+          return;
+        }
+
+        await pi.exec("git", buildGitAddArgs(files), { cwd: ctx.cwd });
         await pi.exec("git", ["commit", "-m", `[pi-review] accept ${files.length} file(s)`], {
           cwd: ctx.cwd,
         });

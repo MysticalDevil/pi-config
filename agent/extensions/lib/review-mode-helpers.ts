@@ -13,3 +13,7 @@ export function resolveRepoFilePath(cwd: string, file: string): string | undefin
 
   return resolvedFile;
 }
+
+export function buildGitAddArgs(files: string[]): string[] {
+  return ["add", "--", ...files];
+}

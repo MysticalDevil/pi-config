@@ -145,6 +145,15 @@ test("review revert paths stay inside repository", () => {
   assert.equal(reviewMode.resolveRepoFilePath(cwd, "/etc/passwd"), undefined);
 });
 
+test("review commit git add args terminate options before file names", () => {
+  assert.deepEqual(reviewMode.buildGitAddArgs(["-A", "src/file.ts"]), [
+    "add",
+    "--",
+    "-A",
+    "src/file.ts",
+  ]);
+});
+
 test("execpolicy evaluates shell operators without surrounding whitespace", () => {
   const policy = {
     rules: [{ pattern: ["rm", ["-rf", "-r", "--recursive"]], decision: "prompt" }],
