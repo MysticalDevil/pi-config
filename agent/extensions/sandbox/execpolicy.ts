@@ -30,8 +30,8 @@
  */
 
 import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { homedir } from "node:os";
 import { join } from "node:path";
-import { getAgentDir } from "@earendil-works/pi-coding-agent";
 
 // ── Types ─────────────────────────────────────────────────────────────
 
@@ -65,7 +65,8 @@ export interface Evaluation {
 
 /**
  * Tokenize a command string into args using simple shell-like splitting.
- * Handles single/double quotes and backslash escaping.
+ * Handles single/double quotes, backslash escaping, and shell operators that
+ * remain meaningful even when not surrounded by spaces.
  */
 function tokenize(command: string): string[] {
   const tokens: string[] = [];
@@ -74,7 +75,8 @@ function tokenize(command: string): string[] {
   let inDouble = false;
   let escape = false;
 
-  for (const ch of command) {
+  for (let i = 0; i < command.length; i++) {
+    const ch = command[i];
     if (escape) {
       current += ch;
       escape = false;
@@ -113,6 +115,25 @@ function tokenize(command: string): string[] {
         tokens.push(current);
         current = "";
       }
+      continue;
+    }
+    if (ch === ";" || ch === "|" || ch === "&" || ch === "<" || ch === ">") {
+      if (current) {
+        tokens.push(current);
+        current = "";
+      }
+      const next = command[i + 1];
+      if ((ch === "|" && next === "|") || (ch === "&" && next === "&")) {
+        tokens.push(ch + next);
+        i += 1;
+        continue;
+      }
+      if ((ch === "<" && next === "<") || (ch === ">" && next === ">")) {
+        tokens.push(ch + next);
+        i += 1;
+        continue;
+      }
+      tokens.push(ch);
       continue;
     }
     current += ch;
@@ -394,7 +415,7 @@ export function loadPolicy(cwd: string): LoadedPolicy {
   sources.push("builtin");
 
   // 2. Global rules: ~/.pi/agent/extensions/sandbox/default.rules
-  const globalPath = join(getAgentDir(), "extensions", "sandbox", "default.rules");
+  const globalPath = join(homedir(), ".pi", "agent", "extensions", "sandbox", "default.rules");
   if (existsSync(globalPath)) {
     try {
       const parsed = JSON.parse(readFileSync(globalPath, "utf-8")) as PolicyFile;

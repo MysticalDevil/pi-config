@@ -12,6 +12,7 @@ const reviewMode = await import("./lib/review-mode-helpers.ts");
 const todoCommand = await import("./lib/todo-command-helpers.ts");
 const askDialogHelpers = await import("./ask-user-question/dialog-helpers.ts");
 const askResponse = await import("./ask-user-question/response.ts");
+const execpolicy = await import("./sandbox/execpolicy.ts");
 
 test("resolveWorkspacePath rejects paths outside cwd", () => {
   const cwd = "/workspace/project";
@@ -141,6 +142,21 @@ test("review revert paths stay inside repository", () => {
   );
   assert.equal(reviewMode.resolveRepoFilePath(cwd, "../file.ts"), undefined);
   assert.equal(reviewMode.resolveRepoFilePath(cwd, "/etc/passwd"), undefined);
+});
+
+test("execpolicy evaluates shell operators without surrounding whitespace", () => {
+  const policy = {
+    rules: [{ pattern: ["rm", ["-rf", "-r", "--recursive"]], decision: "prompt" }],
+    bannedPrefixes: [["python3"], ["python"]],
+  };
+
+  assert.equal(
+    execpolicy.evaluateCommand("echo ok;rm -rf tmp", policy).evaluation.decision,
+    "prompt",
+  );
+  assert.deepEqual(execpolicy.evaluateCommand("true&&python3 -c 'print(1)'", policy).bannedBy, [
+    "python3",
+  ]);
 });
 
 test("ask_user_question custom row is suppressed when previews are present", () => {
