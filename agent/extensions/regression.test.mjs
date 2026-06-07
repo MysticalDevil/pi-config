@@ -14,6 +14,7 @@ const askDialogHelpers = await import("./ask-user-question/dialog-helpers.ts");
 const askResponse = await import("./ask-user-question/response.ts");
 const execpolicy = await import("./sandbox/execpolicy.ts");
 const sandboxConfig = await import("./sandbox/config-helpers.ts");
+const sandboxHooks = await import("./sandbox/hooks.ts");
 
 test("resolveWorkspacePath rejects paths outside cwd", () => {
   const cwd = "/workspace/project";
@@ -197,6 +198,30 @@ test("project sandbox config can only tighten global config", () => {
     restrictNetwork: true,
     extraBwrapArgs: ["--ro-bind", "/safe", "/safe"],
   });
+});
+
+test("pre-tool hooks fail closed only when configured", async () => {
+  const registry = new sandboxHooks.HookRegistry();
+  registry.register({
+    hookType: "pre",
+    name: "legacy-open",
+    async handler() {
+      throw new Error("open failure");
+    },
+  });
+  assert.equal((await registry.runPreToolUse("bash", {})).blocked, false);
+
+  registry.register({
+    hookType: "pre",
+    name: "security-closed",
+    failureMode: "closed",
+    async handler() {
+      throw new Error("closed failure");
+    },
+  });
+  const result = await registry.runPreToolUse("bash", {});
+  assert.equal(result.blocked, true);
+  assert.equal(result.reason.includes("security-closed"), true);
 });
 
 test("ask_user_question custom row is suppressed when previews are present", () => {

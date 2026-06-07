@@ -27,6 +27,7 @@ export interface PreToolUseHook {
   hookType?: "pre";
   name: string;
   description?: string;
+  failureMode?: "open" | "closed";
   /** Lower priority runs first. Default 100. */
   priority?: number;
   /** Optional filter: return false to skip this hook for a given tool call */
@@ -58,7 +59,7 @@ export interface HookInfo {
 
 // ── Registry ──────────────────────────────────────────────────────────
 
-class HookRegistry {
+export class HookRegistry {
   private preHooks: (PreToolUseHook & { _enabled: boolean })[] = [];
   private postHooks: (PostToolUseHook & { _enabled: boolean })[] = [];
 
@@ -165,6 +166,15 @@ class HookRegistry {
         }
       } catch (err) {
         console.error(`Hook "${hook.name}" error:`, err);
+        if (hook.failureMode === "closed") {
+          return {
+            blocked: true,
+            reason: `Blocked because hook "${hook.name}" failed closed: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+            params: currentParams,
+          };
+        }
       }
     }
 
@@ -270,6 +280,7 @@ export const networkSafetyHook: PreToolUseHook = {
   hookType: "pre",
   name: "network-safety",
   description: "Warn when bash commands access suspicious domains",
+  failureMode: "closed",
   priority: 50,
   match: (toolName) => toolName === "bash",
   async handler(_toolName, params) {
@@ -301,6 +312,7 @@ export const configProtectionHook: PreToolUseHook = {
   hookType: "pre",
   name: "config-protection",
   description: "Prevent editing of sensitive config files",
+  failureMode: "closed",
   priority: 40,
   match: (toolName) => toolName === "edit" || toolName === "write",
   async handler(_toolName, params) {
