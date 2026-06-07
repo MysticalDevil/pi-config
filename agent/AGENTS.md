@@ -36,8 +36,12 @@
 
 ## Verification Before Finish
 
-- After code changes, run the smallest relevant verification: build, test, or lint.
-- If verification cannot run, explicitly report what was not verified and why.
+- Run lint/formatters only when related source files have been modified or the user
+  explicitly requests it (e.g. `fmt`, `lint`, `/lint`). Do not auto-run lint/fmt on
+  every change regardless of file type.
+- For build/test verification after code changes, run the smallest relevant
+  verification. If verification cannot run, explicitly report what was not verified
+  and why.
 - Shell scripts should comply with `shellcheck` guidance when feasible.
 
 ## Git Hygiene
@@ -104,7 +108,11 @@
 
 ## Minimal Acceptance Matrix
 
-| Language | Pipeline                                                    |
+- Lint and formatters are triggered lazily: only run them when source files of the
+  corresponding language have been modified, or when the user explicitly requests.
+- Build and test steps run on relevant changes as usual.
+
+| Language | Pipeline (fmt/lint lazy; build/test on change)              |
 | -------- | ----------------------------------------------------------- |
 | Rust     | `cargo fmt` → `cargo clippy` → `cargo build` → `cargo test` |
 | Go       | `gofumpt` → `go vet` → `go build` → `go test`               |
