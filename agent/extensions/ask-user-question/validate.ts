@@ -4,7 +4,7 @@
  * Mirrors @juicesharp/rpiv-ask-user-question tool/validate-questionnaire.ts.
  */
 
-import { type QuestionParams, RESERVED_LABELS, MAX_QUESTIONS } from "./types";
+import { type QuestionParams, RESERVED_LABELS, MAX_QUESTIONS } from "./types.ts";
 
 interface Validation {
   ok: boolean;

@@ -8,12 +8,7 @@ export default {
     "unicorn/no-array-reverse": "off",
     "unicorn/no-array-sort": "off",
     "unicorn/consistent-function-scoping": "off",
+    "import/extensions": ["error", "always", { ignorePackages: true }],
   },
-  ignorePatterns: [
-    "agent/npm",
-    "agent/sessions",
-    "agent/themes",
-    "agent/skills",
-    "node_modules",
-  ],
+  ignorePatterns: ["agent/npm", "agent/sessions", "agent/themes", "agent/skills", "node_modules"],
 };

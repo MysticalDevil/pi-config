@@ -1,4 +1,4 @@
-import type { QuestionData } from "./types";
+import type { QuestionData } from "./types.ts";
 
 export function questionHasPreview(question: QuestionData): boolean {
   return question.options.some((o) => typeof o.preview === "string" && o.preview.length > 0);

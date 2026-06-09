@@ -15,22 +15,22 @@ import {
   SENTINEL_CHAT,
   SENTINEL_NEXT,
   SENTINEL_OTHER,
-} from "./types";
+} from "./types.ts";
 import {
   formatSubmitAnswerValue,
   isCollapseToggle,
   questionHasPreview,
   shouldShowCustomRow,
   totalDialogTabs,
-} from "./dialog-helpers";
-import { PreviewBlockRenderer } from "./preview-block-renderer";
+} from "./dialog-helpers.ts";
+import { PreviewBlockRenderer } from "./preview-block-renderer.ts";
 import {
   decideLayout,
   columnWidths,
   type PreviewLayoutMode,
   PREVIEW_PADDING_LEFT,
   adaptLeftWidth,
-} from "./preview-layout-decider";
+} from "./preview-layout-decider.ts";
 
 interface DialogState {
   tabIndex: number;

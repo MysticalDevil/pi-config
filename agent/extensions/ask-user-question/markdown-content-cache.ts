@@ -9,8 +9,8 @@
 
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import { Markdown, type MarkdownTheme, visibleWidth } from "@earendil-works/pi-tui";
-import type { QuestionData } from "./types";
-import { stripFenceMarkers } from "./preview-box-renderer";
+import type { QuestionData } from "./types.ts";
+import { stripFenceMarkers } from "./preview-box-renderer.ts";
 
 /** Height cap in side-by-side layout. */
 export const MAX_PREVIEW_HEIGHT_SIDE_BY_SIDE = 20;

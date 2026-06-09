@@ -15,7 +15,7 @@
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-agent";
-import { showBtwOverlay } from "./btw-ui";
+import { showBtwOverlay } from "./btw-ui.ts";
 
 // ── Boundary prompt (following Codex /side pattern) ───────────────────
 

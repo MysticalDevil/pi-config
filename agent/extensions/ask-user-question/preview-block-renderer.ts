@@ -7,21 +7,21 @@
 
 import type { Theme } from "@earendil-works/pi-coding-agent";
 import type { MarkdownTheme } from "@earendil-works/pi-tui";
-import type { QuestionData } from "./types";
+import type { QuestionData } from "./types.ts";
 import {
   MAX_PREVIEW_HEIGHT_SIDE_BY_SIDE,
   MAX_PREVIEW_HEIGHT_STACKED,
   MarkdownContentCache,
   NOTES_AFFORDANCE_OVERHEAD,
-} from "./markdown-content-cache";
+} from "./markdown-content-cache.ts";
 import {
   BORDER_HORIZONTAL_OVERHEAD,
   BORDER_INNER_PADDING_HORIZONTAL,
   BORDER_VERTICAL_OVERHEAD,
   computeBoxDimensions,
   renderBorderedBox,
-} from "./preview-box-renderer";
-import type { PreviewLayoutMode } from "./preview-layout-decider";
+} from "./preview-box-renderer.ts";
+import type { PreviewLayoutMode } from "./preview-layout-decider.ts";
 
 export const NOTES_AFFORDANCE_TEXT = "Notes: press n to add notes";
 

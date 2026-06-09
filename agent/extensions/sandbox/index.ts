@@ -33,11 +33,21 @@ import { join, resolve } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { type BashOperations, createBashTool, getAgentDir } from "@earendil-works/pi-coding-agent";
 import { deepMerge, mergeProjectSandboxConfig, type SandboxConfig } from "./config-helpers.ts";
-import { evaluateCommand, type LoadedPolicy, loadPolicy } from "./execpolicy";
-import { guardianReview, lightweightModel } from "./guardian";
-import { auditLogHook, configProtectionHook, hooks, networkSafetyHook, setupHooks } from "./hooks";
-import { setupSnapshots } from "./shell-snapshot";
-import { setupTurnDiff } from "./turn-diff";
+import { evaluateCommand, type LoadedPolicy, loadPolicy } from "./execpolicy.ts";
+import { guardianReview, lightweightModel } from "./guardian.ts";
+import {
+  GuardianDenialCircuitBreaker,
+  shouldCountGuardianDenial,
+} from "./guardian-circuit-helpers.ts";
+import {
+  auditLogHook,
+  configProtectionHook,
+  hooks,
+  networkSafetyHook,
+  setupHooks,
+} from "./hooks.ts";
+import { setupSnapshots } from "./shell-snapshot.ts";
+import { setupTurnDiff } from "./turn-diff.ts";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -500,6 +510,7 @@ export default function (pi: ExtensionAPI) {
   let sandboxedBash = createBashTool(localCwd, {
     operations: createSandboxedBashOps(sandboxConfig),
   });
+  const guardianCircuitBreaker = new GuardianDenialCircuitBreaker();
 
   // ── CLI flag ──────────────────────────────────────────────────────────
 
@@ -593,6 +604,14 @@ export default function (pi: ExtensionAPI) {
     },
   });
 
+  pi.on("turn_start", async () => {
+    guardianCircuitBreaker.reset();
+  });
+
+  pi.on("turn_end", async () => {
+    guardianCircuitBreaker.reset();
+  });
+
   // ── User bash (!! and ! commands) ─────────────────────────────────────
 
   pi.on("user_bash", async (event, ctx) => {
@@ -648,6 +667,17 @@ export default function (pi: ExtensionAPI) {
         };
       }
       if (evaluation.decision === "prompt") {
+        if (guardianCircuitBreaker.isInterrupted()) {
+          return {
+            result: {
+              output: guardianCircuitBreaker.interruptMessage(),
+              exitCode: 1,
+              cancelled: false,
+              truncated: false,
+            },
+          };
+        }
+
         // Auto-review: guardian makes the final call for user commands too
         ctx.ui.setStatus("guardian", `🔍 Guardian reviewing: ${command.slice(0, 60)}...`);
         try {
@@ -660,11 +690,20 @@ export default function (pi: ExtensionAPI) {
           );
           if (gr.outcome === "allow") {
             ctx.ui.setStatus("guardian", undefined);
+            guardianCircuitBreaker.recordNonDenial();
             ctx.ui.notify(`✅ Auto-approved: ${gr.reason}`, "warning");
             // fall through to execute
           } else {
             ctx.ui.setStatus("guardian", undefined);
             ctx.ui.notify(`🚫 Auto-review blocked: ${gr.reason}`, "error");
+            if (shouldCountGuardianDenial(gr.reason)) {
+              const action = guardianCircuitBreaker.recordDenial();
+              if (action.action === "interrupt") {
+                ctx.ui.notify(guardianCircuitBreaker.interruptMessage(), "error");
+              }
+            } else {
+              guardianCircuitBreaker.recordNonDenial();
+            }
             return {
               result: {
                 output: `Auto-review blocked: ${gr.reason}`,
@@ -798,6 +837,13 @@ export default function (pi: ExtensionAPI) {
       }
 
       if (evaluation.decision === "prompt") {
+        if (guardianCircuitBreaker.isInterrupted()) {
+          return {
+            block: true,
+            reason: guardianCircuitBreaker.interruptMessage(),
+          };
+        }
+
         // auto-review: guardian makes the final call, no user prompt
         ctx.ui.setStatus("guardian", `🔍 Guardian reviewing: ${command.slice(0, 60)}...`);
         try {
@@ -810,10 +856,19 @@ export default function (pi: ExtensionAPI) {
           );
           ctx.ui.setStatus("guardian", undefined);
           if (gr.outcome === "allow") {
+            guardianCircuitBreaker.recordNonDenial();
             ctx.ui.notify(`✅ Auto-approved: ${gr.reason}`, "warning");
             // fall through to execute
           } else {
             ctx.ui.notify(`🚫 Auto-review blocked: ${gr.reason}`, "error");
+            if (shouldCountGuardianDenial(gr.reason)) {
+              const action = guardianCircuitBreaker.recordDenial();
+              if (action.action === "interrupt") {
+                ctx.ui.notify(guardianCircuitBreaker.interruptMessage(), "error");
+              }
+            } else {
+              guardianCircuitBreaker.recordNonDenial();
+            }
             return { block: true, reason: `Guardian blocked: ${gr.reason}` };
           }
         } catch (e) {

@@ -28,7 +28,7 @@ import type { ExtensionAPI, ExtensionContext } from "@earendil-works/pi-coding-a
 import { Key } from "@earendil-works/pi-tui";
 
 import { buildGitAddArgs, resolveRepoFilePath } from "./lib/review-mode-helpers.ts";
-import { parseStatusLine } from "./lib/shared";
+import { parseStatusLine } from "./lib/shared.ts";
 
 function isGitRepo(cwd: string): boolean {
   try {

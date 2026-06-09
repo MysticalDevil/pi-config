@@ -22,7 +22,7 @@ import {
   markCompletedSteps,
   PLAN_MODE_TOOLS,
   type TodoItem,
-} from "./utils";
+} from "./utils.ts";
 
 export { PLAN_MODE_TOOLS };
 

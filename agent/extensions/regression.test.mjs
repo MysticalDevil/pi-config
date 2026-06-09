@@ -15,6 +15,7 @@ const askResponse = await import("./ask-user-question/response.ts");
 const execpolicy = await import("./sandbox/execpolicy.ts");
 const sandboxConfig = await import("./sandbox/config-helpers.ts");
 const sandboxHooks = await import("./sandbox/hooks.ts");
+const guardianCircuit = await import("./sandbox/guardian-circuit-helpers.ts");
 
 test("resolveWorkspacePath rejects paths outside cwd", () => {
   const cwd = "/workspace/project";
@@ -222,6 +223,39 @@ test("pre-tool hooks fail closed only when configured", async () => {
   const result = await registry.runPreToolUse("bash", {});
   assert.equal(result.blocked, true);
   assert.equal(result.reason.includes("security-closed"), true);
+});
+
+test("guardian denial circuit breaker interrupts repeated denials", () => {
+  const circuitBreaker = new guardianCircuit.GuardianDenialCircuitBreaker();
+
+  assert.deepEqual(circuitBreaker.recordDenial(), { action: "continue" });
+  assert.deepEqual(circuitBreaker.recordDenial(), { action: "continue" });
+  assert.deepEqual(circuitBreaker.recordDenial(), {
+    action: "interrupt",
+    consecutiveDenials: 3,
+    recentDenials: 3,
+  });
+  assert.equal(circuitBreaker.isInterrupted(), true);
+});
+
+test("guardian denial circuit breaker resets consecutive denials on non-denial", () => {
+  const circuitBreaker = new guardianCircuit.GuardianDenialCircuitBreaker();
+
+  circuitBreaker.recordDenial();
+  circuitBreaker.recordDenial();
+  circuitBreaker.recordNonDenial();
+
+  assert.deepEqual(circuitBreaker.recordDenial(), { action: "continue" });
+  assert.equal(circuitBreaker.isInterrupted(), false);
+});
+
+test("guardian denial counting ignores timeout and parsing failures", () => {
+  assert.equal(guardianCircuit.shouldCountGuardianDenial("Guardian timed out"), false);
+  assert.equal(
+    guardianCircuit.shouldCountGuardianDenial("Guardian returned non-JSON output"),
+    false,
+  );
+  assert.equal(guardianCircuit.shouldCountGuardianDenial("critical destructive action"), true);
 });
 
 test("ask_user_question custom row is suppressed when previews are present", () => {
