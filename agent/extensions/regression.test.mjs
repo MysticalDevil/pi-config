@@ -16,6 +16,7 @@ const execpolicy = await import("./sandbox/execpolicy.ts");
 const sandboxConfig = await import("./sandbox/config-helpers.ts");
 const sandboxHooks = await import("./sandbox/hooks.ts");
 const guardianCircuit = await import("./sandbox/guardian-circuit-helpers.ts");
+const projectTrustBypass = await import("./lib/project-trust-bypass-helpers.ts");
 
 test("resolveWorkspacePath rejects paths outside cwd", () => {
   const cwd = "/workspace/project";
@@ -59,6 +60,51 @@ test("removeContextEntries removes every entry under a directory", () => {
   assert.deepEqual(
     result.remaining.map((entry) => entry.path),
     ["/workspace/project/src/foobar.ts"],
+  );
+});
+
+test("project trust bypass detects documented self-update commands", () => {
+  assert.equal(
+    projectTrustBypass.shouldDeclineProjectTrustForCliCommand(["pi", "update", "--self"]),
+    true,
+  );
+  assert.equal(
+    projectTrustBypass.shouldDeclineProjectTrustForCliCommand(["pi", "update", "self"]),
+    true,
+  );
+  assert.equal(
+    projectTrustBypass.shouldDeclineProjectTrustForCliCommand(["pi", "update", "pi", "--force"]),
+    true,
+  );
+});
+
+test("project trust bypass keeps package commands explicit", () => {
+  assert.equal(projectTrustBypass.shouldDeclineProjectTrustForCliCommand(["pi", "update"]), false);
+  assert.equal(
+    projectTrustBypass.shouldDeclineProjectTrustForCliCommand(["pi", "update", "--extensions"]),
+    false,
+  );
+  assert.equal(
+    projectTrustBypass.shouldDeclineProjectTrustForCliCommand(["pi", "update", "npm:foo"]),
+    false,
+  );
+  assert.equal(
+    projectTrustBypass.shouldDeclineProjectTrustForCliCommand(["pi", "install", "npm:foo"]),
+    false,
+  );
+  assert.equal(projectTrustBypass.shouldDeclineProjectTrustForCliCommand(["pi", "list"]), false);
+  assert.equal(
+    projectTrustBypass.shouldDeclineProjectTrustForCliCommand([
+      "pi",
+      "update",
+      "--self",
+      "--approve",
+    ]),
+    false,
+  );
+  assert.equal(
+    projectTrustBypass.shouldDeclineProjectTrustForCliCommand(["pi", "-p", "update"]),
+    false,
   );
 });
 
