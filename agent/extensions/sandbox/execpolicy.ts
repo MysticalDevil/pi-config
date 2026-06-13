@@ -42,6 +42,7 @@ export interface RuleDef {
   decision?: Decision; // defaults to "allow"
   justification?: string;
   excludePathPrefix?: string; // if any token starts with this, rule is skipped
+  anyTokenRegex?: string[]; // if set, at least one token must match one regex
 }
 
 export interface PolicyFile {
@@ -178,6 +179,19 @@ function matchRule(tokens: string[], rule: RuleDef): { matched: boolean; prefix:
       return { matched: false, prefix: [] };
     }
   }
+
+  if (rule.anyTokenRegex?.length) {
+    const matchedAnyRegex = rule.anyTokenRegex.some((pattern) => {
+      try {
+        const regex = new RegExp(pattern);
+        return tokens.some((token) => regex.test(token));
+      } catch {
+        return false;
+      }
+    });
+    if (!matchedAnyRegex) return { matched: false, prefix: [] };
+  }
+
   return { matched: true, prefix: tokens.slice(0, rule.pattern.length) };
 }
 
@@ -309,7 +323,8 @@ export function evaluateCommand(
 const DEFAULT_RULES: PolicyFile = {
   rules: [
     {
-      pattern: ["rm", ["-rf", "-r", "--recursive"]],
+      pattern: ["rm"],
+      anyTokenRegex: ["^-[^-]*[rR][^-]*$", "^--recursive$"],
       decision: "prompt",
       justification: "Recursive delete — check before proceeding",
       excludePathPrefix: "/tmp/",
@@ -320,22 +335,20 @@ const DEFAULT_RULES: PolicyFile = {
       justification: "Privilege escalation via sudo",
     },
     {
-      pattern: ["chmod", "*", "777"],
+      pattern: ["chmod"],
+      anyTokenRegex: ["^777$"],
       decision: "prompt",
       justification: "World-writable permissions",
     },
     {
-      pattern: ["chmod", ["u+s", "g+s", "+s"]],
+      pattern: ["chmod"],
+      anyTokenRegex: ["^(?:[0-7]*[2467][0-7]{3}|[ugoa]*[+=].*s.*)$"],
       decision: "forbidden",
       justification: "setuid/setgid privilege escalation",
     },
     {
-      pattern: ["git", "push", "--force"],
-      decision: "prompt",
-      justification: "Force push rewrites remote history",
-    },
-    {
-      pattern: ["git", "push", ["-f", "--force"]],
+      pattern: ["git", "push"],
+      anyTokenRegex: ["^-f$", "^--force(?:-with-lease)?(?:=.*)?$"],
       decision: "prompt",
       justification: "Force push rewrites remote history",
     },
@@ -365,7 +378,8 @@ const DEFAULT_RULES: PolicyFile = {
       justification: "System reboot — use sudo reboot manually",
     },
     {
-      pattern: ["dd", "if="],
+      pattern: ["dd"],
+      anyTokenRegex: ["^(?:if|of)=/dev/"],
       decision: "forbidden",
       justification: "Raw disk copy is destructive",
     },

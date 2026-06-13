@@ -217,6 +217,37 @@ test("execpolicy evaluates shell operators without surrounding whitespace", () =
   ]);
 });
 
+test("execpolicy catches common dangerous command variants", () => {
+  const policy = {
+    rules: [
+      {
+        pattern: ["rm"],
+        anyTokenRegex: ["^-[^-]*[rR][^-]*$", "^--recursive$"],
+        decision: "prompt",
+      },
+      { pattern: ["chmod"], anyTokenRegex: ["^777$"], decision: "prompt" },
+      {
+        pattern: ["git", "push"],
+        anyTokenRegex: ["^-f$", "^--force(?:-with-lease)?(?:=.*)?$"],
+        decision: "prompt",
+      },
+      { pattern: ["dd"], anyTokenRegex: ["^(?:if|of)=/dev/"], decision: "forbidden" },
+    ],
+    bannedPrefixes: [],
+  };
+
+  assert.equal(execpolicy.evaluateCommand("rm -fr repo", policy).evaluation.decision, "prompt");
+  assert.equal(execpolicy.evaluateCommand("chmod 777 file", policy).evaluation.decision, "prompt");
+  assert.equal(
+    execpolicy.evaluateCommand("git push origin main --force", policy).evaluation.decision,
+    "prompt",
+  );
+  assert.equal(
+    execpolicy.evaluateCommand("dd if=/dev/sda of=backup.img", policy).evaluation.decision,
+    "forbidden",
+  );
+});
+
 test("project sandbox config can only tighten global config", () => {
   const merged = sandboxConfig.mergeProjectSandboxConfig(
     {
