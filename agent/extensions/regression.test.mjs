@@ -13,6 +13,7 @@ const todoCommand = await import("./lib/todo-command-helpers.ts");
 const askDialogHelpers = await import("./ask-user-question/dialog-helpers.ts");
 const askResponse = await import("./ask-user-question/response.ts");
 const discovery = await import("./cliproxyapi/discovery.ts");
+const cliproxySetup = await import("./cliproxyapi/setup.ts");
 const execpolicy = await import("./sandbox/execpolicy.ts");
 const sandboxConfig = await import("./sandbox/config-helpers.ts");
 const sandboxHooks = await import("./sandbox/hooks.ts");
@@ -139,6 +140,45 @@ test("CLIProxyAPI discovery timeout covers response body", async () => {
   } finally {
     globalThis.fetch = originalFetch;
   }
+});
+
+test("CLIProxyAPI setup parses args and keeps secrets out of success text", () => {
+  assert.deepEqual(cliproxySetup.parseSetupArgs("http://127.0.0.1:8317/v1 sk-test"), {
+    endpoint: "http://127.0.0.1:8317/v1",
+    apiKey: "sk-test",
+  });
+  assert.deepEqual(
+    cliproxySetup.parseSetupArgs(
+      '{"endpoint":"http://127.0.0.1:8317/v1","apiKey":"super-secret-key"}',
+    ),
+    {
+      endpoint: "http://127.0.0.1:8317/v1",
+      apiKey: "super-secret-key",
+    },
+  );
+  assert.equal(cliproxySetup.parseSetupArgs(""), undefined);
+
+  const discoveryResult = {
+    endpoint: "http://127.0.0.1:8317/v1",
+    totalModels: 1,
+    groups: [
+      {
+        provider: "cliproxy-openai",
+        label: "CLIProxy OpenAI",
+        owner: "openai",
+        api: "openai-completions",
+        models: [{ id: "gpt-test", ownedBy: "openai" }],
+      },
+    ],
+  };
+  const text = cliproxySetup.formatSetupSuccess(discoveryResult, {
+    providerCount: 1,
+    modelCount: 1,
+    providers: [{ provider: "cliproxy-openai", modelCount: 1 }],
+  });
+
+  assert.equal(text.includes("gpt-test"), true);
+  assert.equal(text.includes("super-secret-key"), false);
 });
 
 test("extension names reject path traversal and separators", () => {

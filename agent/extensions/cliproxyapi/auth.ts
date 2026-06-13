@@ -7,7 +7,7 @@ export interface CliProxyCredentials extends OAuthCredentials {
   endpoint: string;
 }
 
-export interface CliProxyLoginInput {
+export interface CliProxySetupInput {
   endpoint: string;
   apiKey: string;
 }
@@ -47,17 +47,19 @@ export function validateEndpoint(raw: string): string {
   return endpoint;
 }
 
-export function parseLoginInput(raw: string): CliProxyLoginInput {
+export function parseCliProxySetupInput(raw: string): CliProxySetupInput {
   const input = raw.trim();
-  if (!input) throw new Error("Login input cannot be empty.");
+  if (!input) throw new Error("Setup input cannot be empty.");
 
   if (input.startsWith("{")) {
-    return parseJsonLoginInput(input);
+    return parseJsonSetupInput(input);
   }
 
   const match = input.match(/^(\S+)\s+(.+)$/);
   if (!match) {
-    throw new Error("Enter both endpoint and API key, separated by a space.");
+    throw new Error(
+      'Usage: /cliproxy-setup <endpoint> <apiKey> or /cliproxy-setup \'{"endpoint":"...","apiKey":"..."}\'.',
+    );
   }
 
   return {
@@ -78,16 +80,16 @@ export function makeCredentials(endpoint: string, apiKey: string): CliProxyCrede
   };
 }
 
-function parseJsonLoginInput(input: string): CliProxyLoginInput {
+function parseJsonSetupInput(input: string): CliProxySetupInput {
   let value: unknown;
   try {
     value = JSON.parse(input);
   } catch {
-    throw new Error("JSON login input is invalid.");
+    throw new Error("JSON setup input is invalid.");
   }
 
   if (!value || typeof value !== "object") {
-    throw new Error("JSON login input must be an object.");
+    throw new Error("JSON setup input must be an object.");
   }
 
   const object = value as Record<string, unknown>;
@@ -95,7 +97,7 @@ function parseJsonLoginInput(input: string): CliProxyLoginInput {
   const apiKey = object.apiKey ?? object.api_key ?? object.key ?? object.access;
 
   if (typeof endpoint !== "string" || typeof apiKey !== "string") {
-    throw new Error("JSON login input must include endpoint and apiKey.");
+    throw new Error("JSON setup input must include endpoint and apiKey.");
   }
 
   return { endpoint, apiKey };
