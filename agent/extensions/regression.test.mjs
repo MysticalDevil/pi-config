@@ -229,7 +229,12 @@ test("project sandbox config can only tighten global config", () => {
     },
     {
       enabled: false,
-      writablePaths: ["/home/me/.cache/project", "/etc"],
+      writablePaths: [
+        "/home/me/.cache/project",
+        "/home/me/.cache/../../escape",
+        "/home/me/.cache2/project",
+        "/etc",
+      ],
       deniedPaths: ["/home/me/.aws"],
       writeProtected: ["*.pem"],
       restrictNetwork: false,

@@ -1,3 +1,5 @@
+import * as path from "node:path";
+
 export interface SandboxConfig {
   enabled: boolean;
   /** Paths to make writable (in addition to cwd and /tmp) */
@@ -40,7 +42,10 @@ function unique(values: string[]): string[] {
 }
 
 function isSameOrInsidePath(candidate: string, base: string): boolean {
-  return candidate === base || candidate.startsWith(`${base}/`);
+  const resolvedCandidate = path.resolve(candidate);
+  const resolvedBase = path.resolve(base);
+  const relative = path.relative(resolvedBase, resolvedCandidate);
+  return relative === "" || (!relative.startsWith("..") && !path.isAbsolute(relative));
 }
 
 function filterWritablePaths(basePaths: string[], projectPaths: string[]): string[] {
