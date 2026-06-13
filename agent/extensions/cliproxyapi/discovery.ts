@@ -25,30 +25,49 @@ interface ModelsResponse {
   data?: Array<{ id?: unknown; owned_by?: unknown; object?: unknown }>;
 }
 
-export async function discoverModels(endpoint: string, apiKey: string): Promise<DiscoveryResult> {
-  const modelsUrl = new URL("models", `${endpoint.replace(/\/+$/, "")}/`).toString();
+async function withDiscoveryTimeout<T>(
+  timeoutMs: number,
+  operation: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), DISCOVERY_TIMEOUT_MS);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error(`/v1/models discovery timed out after ${timeoutMs}ms`));
+    }, timeoutMs);
+  });
 
-  let response: Response;
   try {
-    response = await fetch(modelsUrl, {
-      signal: controller.signal,
+    return await Promise.race([operation(controller.signal), timeout]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
+export async function discoverModels(
+  endpoint: string,
+  apiKey: string,
+  timeoutMs: number = DISCOVERY_TIMEOUT_MS,
+): Promise<DiscoveryResult> {
+  const modelsUrl = new URL("models", `${endpoint.replace(/\/+$/, "")}/`).toString();
+
+  const body = await withDiscoveryTimeout(timeoutMs, async (signal) => {
+    const response = await fetch(modelsUrl, {
+      signal,
       headers: {
         Accept: "application/json",
         Authorization: `Bearer ${apiKey}`,
         "User-Agent": "pi-cliproxyapi-lite/0.1",
       },
     });
-  } finally {
-    clearTimeout(timer);
-  }
 
-  if (!response.ok) {
-    throw new Error(`/v1/models returned HTTP ${response.status}`);
-  }
+    if (!response.ok) {
+      throw new Error(`/v1/models returned HTTP ${response.status}`);
+    }
 
-  const body = (await response.json()) as ModelsResponse;
+    return (await response.json()) as ModelsResponse;
+  });
   if (!Array.isArray(body.data)) {
     throw new Error("/v1/models response does not contain a data array");
   }

@@ -12,6 +12,7 @@ const reviewMode = await import("./lib/review-mode-helpers.ts");
 const todoCommand = await import("./lib/todo-command-helpers.ts");
 const askDialogHelpers = await import("./ask-user-question/dialog-helpers.ts");
 const askResponse = await import("./ask-user-question/response.ts");
+const discovery = await import("./cliproxyapi/discovery.ts");
 const execpolicy = await import("./sandbox/execpolicy.ts");
 const sandboxConfig = await import("./sandbox/config-helpers.ts");
 const sandboxHooks = await import("./sandbox/hooks.ts");
@@ -116,6 +117,28 @@ test("project trust bypass keeps package commands explicit", () => {
     ]),
     false,
   );
+});
+
+test("CLIProxyAPI discovery timeout covers response body", async () => {
+  const originalFetch = globalThis.fetch;
+  globalThis.fetch = async (_url, requestInit) => {
+    assert.equal(requestInit.signal.aborted, false);
+    return {
+      ok: true,
+      async json() {
+        return await new Promise(() => {});
+      },
+    };
+  };
+
+  try {
+    await assert.rejects(
+      () => discovery.discoverModels("http://127.0.0.1:8317/v1", "test-key", 5),
+      /timed out/,
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
 });
 
 test("extension names reject path traversal and separators", () => {
