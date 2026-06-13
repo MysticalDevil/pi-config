@@ -146,10 +146,53 @@ export function getPiSubcommand(argv: readonly string[]): string | undefined {
   return commandArgs(argv)?.[0];
 }
 
+function hasUpdateSelfFlag(argv: readonly string[]): boolean {
+  const args = stripExecutablePrefix(argv);
+  let updateCommandSeen = false;
+
+  for (let i = 0; i < args.length; i++) {
+    const arg = args[i];
+    if (!arg) continue;
+
+    if (AGENT_RUN_FLAGS.has(arg) || isAgentRunInlineValueFlag(arg)) {
+      return false;
+    }
+
+    if (VALUE_TAKING_AGENT_RUN_FLAGS.has(arg)) {
+      return false;
+    }
+
+    if (VALUE_TAKING_FLAGS.has(arg)) {
+      i++;
+      continue;
+    }
+
+    if (isInlineValueFlag(arg)) {
+      continue;
+    }
+
+    if (arg.startsWith("@")) {
+      return false;
+    }
+
+    if (arg.startsWith("-")) {
+      if (updateCommandSeen && arg === "--self") return true;
+      continue;
+    }
+
+    if (!updateCommandSeen) {
+      if (arg !== "update") return false;
+      updateCommandSeen = true;
+    }
+  }
+
+  return false;
+}
+
 export function getPiUpdateTarget(argv: readonly string[]): string | undefined {
   const args = commandArgs(argv);
   if (!args || args[0] !== "update") return undefined;
-  if (argv.includes("--self")) return "self";
+  if (hasUpdateSelfFlag(argv)) return "self";
   return args[1];
 }
 

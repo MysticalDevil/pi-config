@@ -106,6 +106,16 @@ test("project trust bypass keeps package commands explicit", () => {
     projectTrustBypass.shouldDeclineProjectTrustForCliCommand(["pi", "-p", "update"]),
     false,
   );
+  assert.equal(
+    projectTrustBypass.shouldDeclineProjectTrustForCliCommand([
+      "pi",
+      "--model",
+      "--self",
+      "update",
+      "package",
+    ]),
+    false,
+  );
 });
 
 test("extension names reject path traversal and separators", () => {
