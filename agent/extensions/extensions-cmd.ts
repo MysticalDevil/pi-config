@@ -14,7 +14,7 @@ import { existsSync, readdirSync, renameSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { getAgentDir } from "@earendil-works/pi-coding-agent";
-import { isSafeExtensionName } from "./lib/extensions-cmd-helpers.ts";
+import { isSafeExtensionName, sortExtensionEntries } from "./lib/extensions-cmd-helpers.ts";
 
 interface ExtInfo {
   name: string;
@@ -22,19 +22,16 @@ interface ExtInfo {
   source: "global" | "project";
 }
 
-function scanExtensions(cwd: string): ExtInfo[] {
+export function scanExtensions(cwd: string): ExtInfo[] {
   const dirs = [
     { path: join(cwd, ".pi", "extensions"), source: "project" as const },
     { path: join(getAgentDir(), "extensions"), source: "global" as const },
   ];
 
-  const result = new Map<string, ExtInfo>();
+  const result: ExtInfo[] = [];
 
   function record(ext: ExtInfo): void {
-    const existing = result.get(ext.name);
-    if (!existing || (existing.source === "global" && ext.source === "project")) {
-      result.set(ext.name, ext);
-    }
+    result.push(ext);
   }
 
   for (const { path, source } of dirs) {
@@ -89,7 +86,7 @@ function scanExtensions(cwd: string): ExtInfo[] {
     }
   }
 
-  return Array.from(result.values()).sort((a, b) => a.name.localeCompare(b.name));
+  return sortExtensionEntries(result);
 }
 
 function toggleExtension(

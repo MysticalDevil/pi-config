@@ -148,6 +148,18 @@ test("extension names reject path traversal and separators", () => {
   assert.equal(extensionsCmd.isSafeExtensionName(".hidden"), false);
 });
 
+test("extension sorting preserves project/global duplicates", () => {
+  const sorted = extensionsCmd.sortExtensionEntries([
+    { name: "todo", source: "project" },
+    { name: "todo", source: "global" },
+  ]);
+
+  assert.deepEqual(sorted, [
+    { name: "todo", source: "global" },
+    { name: "todo", source: "project" },
+  ]);
+});
+
 test("plan mode enables the installed ask_user_question tool", () => {
   assert.equal(planMode.PLAN_MODE_TOOLS.includes("ask_user_question"), true);
   assert.equal(planMode.PLAN_MODE_TOOLS.includes("questionnaire"), false);
