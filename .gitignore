@@ -16,6 +16,7 @@ exa-usage.json
 
 # ── Session history (full conversations, file contents, command output) ──
 agent/sessions/
+agent/run-history.jsonl
 
 # ── Installed third-party packages (reinstall with `pi install`) ──
 agent/npm/
